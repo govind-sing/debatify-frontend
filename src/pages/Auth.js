@@ -13,9 +13,9 @@ const Auth = () => {
   const [isOtpMode, setIsOtpMode] = useState(false);
   const [emailForOtp, setEmailForOtp] = useState("");
   const [isVerifyMode, setIsVerifyMode] = useState(false);
-  const [isForgotPassword, setIsForgotPassword] = useState(false); // New state for forgot password
-  const [forgotEmail, setForgotEmail] = useState(""); // New state for email input
-  const [message, setMessage] = useState(""); // For displaying messages
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [message, setMessage] = useState("");
   const navigate = useNavigate();
 
   const handleChange = useCallback((e) => {
@@ -130,7 +130,7 @@ const Auth = () => {
         setForm({ username: "", email: "", password: "", identifier: "" });
         setOtp("");
         setForgotEmail("");
-        navigate("/"); // Redirect to home or reset to login
+        navigate("/");
       }, 1500);
     } catch (err) {
       setMessage(err.response?.data?.message || "Password Reset Failed");
@@ -177,6 +177,9 @@ const Auth = () => {
             >
               {loading ? "Verifying..." : "Verify"}
             </button>
+            <p className="text-sm text-gray-600 text-center mt-4">
+              Please check your spam folder if you don’t see the OTP in your inbox.
+            </p>
           </>
         ) : isOtpMode ? (
           <>
@@ -203,6 +206,9 @@ const Auth = () => {
             >
               {loading ? "Resetting..." : "Reset Password"}
             </button>
+            <p className="text-sm text-gray-600 text-center mt-4">
+              Please check your spam folder if you don’t see the OTP in your inbox.
+            </p>
             <p
               className="text-center text-blue-500 cursor-pointer mt-4"
               onClick={() => {
