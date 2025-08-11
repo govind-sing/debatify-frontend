@@ -18,6 +18,22 @@ const DiscussionPage = () => {
   const [passcodeRequired, setPasscodeRequired] = useState(false);
   const [enteredPasscode, setEnteredPasscode] = useState(null);
   const [sortBy, setSortBy] = useState("latest");
+  const [userId, setUserId] = useState(null);
+
+  // Extract userId from JWT token
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (token && typeof token === "string" && token.split(".").length === 3) {
+      try {
+        const payload = atob(token.split(".")[1]);
+        const parsedPayload = JSON.parse(payload);
+        setUserId(parsedPayload?.userId || null);
+      } catch (e) {
+        console.error("Error decoding token:", e);
+        setUserId(null);
+      }
+    }
+  }, []);
 
   const fetchDiscussion = useCallback(
     async (enteredPasscodeParam = null) => {
@@ -445,16 +461,17 @@ const DiscussionPage = () => {
                   </p>
                   {/* Comment Like Button */}
                   <motion.div
-                    className={`flex items-center rounded-full bg-gray-100 shadow-sm text-sm md:text-base hover:bg-gray-200 ${
-                      c.likedBy?.includes(JSON.parse(atob(localStorage.getItem("token")?.split(".")[1]))?.userId)
+                    className={`flex items-center rounded-full bg-gray-100 shadow-sm text-sm md:text-base ${
+                      userId && c.likedBy?.includes(userId)
                         ? "bg-pink-100 text-pink-700"
-                        : "text-gray-700"
+                        : "text-gray-700 hover:bg-gray-200"
                     }`}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                    whileHover={{ scale: userId ? 1.05 : 1 }}
+                    whileTap={{ scale: userId ? 0.95 : 1 }}
                   >
                     <button
                       onClick={() => handleCommentLike(c._id)}
+                      disabled={!userId}
                       className="flex items-center px-2 py-1 md:px-3 md:py-2"
                     >
                       <svg

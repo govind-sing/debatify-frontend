@@ -19,6 +19,22 @@ const DebatePage = () => {
   const [passcode, setPasscode] = useState("");
   const [passcodeRequired, setPasscodeRequired] = useState(false);
   const [enteredPasscode, setEnteredPasscode] = useState(null);
+  const [userId, setUserId] = useState(null);
+
+  // Extract userId from JWT token
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (token && typeof token === "string" && token.split(".").length === 3) {
+      try {
+        const payload = atob(token.split(".")[1]);
+        const parsedPayload = JSON.parse(payload);
+        setUserId(parsedPayload?.userId || null);
+      } catch (e) {
+        console.error("Error decoding token:", e);
+        setUserId(null);
+      }
+    }
+  }, []);
 
   const fetchDebate = useCallback(
     async (enteredPasscodeParam = null) => {
@@ -32,10 +48,8 @@ const DebatePage = () => {
         const { data } = await API.get(url);
         setDebate(data);
         setComments(data.comments || []);
-        const token = localStorage.getItem("token");
-        if (token) {
-          const userId = JSON.parse(atob(token.split(".")[1])).userId;
-          const userComments = data.comments.filter((c) => c.user._id === userId);
+        if (userId) {
+          const userComments = data.comments.filter((c) => c.user?._id === userId);
           if (userComments.length > 0) {
             setUserStanceLocked(userComments[0].stance);
           }
@@ -54,7 +68,7 @@ const DebatePage = () => {
         setLoading(false);
       }
     },
-    [id, enteredPasscode]
+    [id, enteredPasscode, userId]
   );
 
   useEffect(() => {
@@ -503,16 +517,17 @@ const DebatePage = () => {
                     </p>
                     {/* Comment Like Button */}
                     <motion.div
-                      className={`flex items-center rounded-full bg-gray-100 shadow-sm text-sm md:text-base hover:bg-gray-200 ${
-                        c.likedBy?.includes(JSON.parse(atob(localStorage.getItem("token")?.split(".")[1]))?.userId)
+                      className={`flex items-center rounded-full bg-gray-100 shadow-sm text-sm md:text-base ${
+                        userId && c.likedBy?.includes(userId)
                           ? "bg-orange-100 text-orange-700"
-                          : "text-gray-700"
+                          : "text-gray-700 hover:bg-gray-200"
                       }`}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
+                      whileHover={{ scale: userId ? 1.05 : 1 }}
+                      whileTap={{ scale: userId ? 0.95 : 1 }}
                     >
                       <button
                         onClick={() => handleCommentLike(c._id)}
+                        disabled={!userId}
                         className="flex items-center px-2 py-1 md:px-3 md:py-2"
                       >
                         <svg
