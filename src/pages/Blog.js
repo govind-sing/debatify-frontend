@@ -136,7 +136,7 @@ const Blog = () => {
   };
 
   const handleAllClick = () => {
-    navigate("/blog"); // Navigate to /blog without query params
+    navigate("/blog");
   };
 
   return (
@@ -320,53 +320,58 @@ const Blog = () => {
                 whileHover={{ scale: 1.03 }}
                 className="relative group bg-white rounded-xl shadow-lg overflow-hidden"
               >
-                <Link to={`/blogpage/${blog._id}`}>
-                  <div className="absolute inset-0 bg-gradient-to-t from-blue-500/80 to-transparent opacity-0 group-hover:opacity-100" />
-                  <div className="p-4 md:p-6 relative z-10">
+                {/* Blog card content without wrapping Link */}
+                <div className="p-4 md:p-6 relative z-10">
+                  <Link to={`/blogpage/${blog._id}`}>
                     <h3 className="text-lg md:text-xl font-semibold text-gray-800 group-hover:text-white">
                       {blog.title || "Untitled Blog"}
                     </h3>
-                    <p className="text-gray-600 group-hover:text-gray-200 mt-2 text-sm md:text-base">
-                      {blog.content ? blog.content.substring(0, 80) + "..." : "No content available"}
-                    </p>
-                    {blog.fileUrl && (
-                      <div className="mt-2">
-                        {blog.fileUrl.endsWith(".pdf") ? (
-                          <span className="text-xs md:text-sm text-blue-500 group-hover:text-yellow-300">
-                            PDF Attached
-                          </span>
-                        ) : blog.fileUrl.match(/\.(mp4|webm|ogg)$/) ? (
-                          <span className="text-xs md:text-sm text-blue-500 group-hover:text-yellow-300">
-                            Video Attached
-                          </span>
-                        ) : blog.fileUrl.match(/\.(mp3|wav|ogg)$/) ? (
-                          <span className="text-xs md:text-sm text-blue-500 group-hover:text-yellow-300">
-                            Audio Attached
-                          </span>
-                        ) : (
-                          <span className="text-xs md:text-sm text-blue-500 group-hover:text-yellow-300">
-                            Image Attached
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    <div className="mt-3 flex justify-between items-center">
-                      <span className="text-xs md:text-sm text-blue-500 group-hover:text-yellow-300 font-medium">
-                        Votes: {(blog.upvotes || 0) - (blog.downvotes || 0)}
-                      </span>
-                      <span className="text-xs md:text-sm text-gray-500 group-hover:text-gray-300">
-                        By:{" "}
-                        <Link
-                          to={`/profile/${blog.author?.username || "unknown"}`}
-                          className="hover:underline"
-                        >
-                          {blog.author?.username || "Unknown"}
-                        </Link>
-                        {blog.isPrivate && <LockClosedIcon className="h-3 w-3 md:h-4 md:w-4 inline ml-1 text-red-500" />}
-                      </span>
+                  </Link>
+                  <p className="text-gray-600 group-hover:text-gray-200 mt-2 text-sm md:text-base">
+                    {blog.content ? blog.content.substring(0, 80) + "..." : "No content available"}
+                  </p>
+                  {blog.fileUrl && (
+                    <div className="mt-2">
+                      {blog.fileUrl.endsWith(".pdf") ? (
+                        <span className="text-xs md:text-sm text-blue-500 group-hover:text-yellow-300">
+                          PDF Attached
+                        </span>
+                      ) : blog.fileUrl.match(/\.(mp4|webm|ogg)$/) ? (
+                        <span className="text-xs md:text-sm text-blue-500 group-hover:text-yellow-300">
+                          Video Attached
+                        </span>
+                      ) : blog.fileUrl.match(/\.(mp3|wav|ogg)$/) ? (
+                        <span className="text-xs md:text-sm text-blue-500 group-hover:text-yellow-300">
+                          Audio Attached
+                        </span>
+                      ) : (
+                        <span className="text-xs md:text-sm text-blue-500 group-hover:text-yellow-300">
+                          Image Attached
+                        </span>
+                      )}
                     </div>
+                  )}
+                  <div className="mt-3 flex justify-between items-center">
+                    <span className="text-xs md:text-sm text-blue-500 group-hover:text-yellow-300 font-medium">
+                      Votes: {(blog.upvotes || 0) - (blog.downvotes || 0)}
+                    </span>
+                    <span className="text-xs md:text-sm text-gray-500 group-hover:text-gray-300">
+                      By:{" "}
+                      <Link
+                        to={`/profile/${blog.author?.username || "unknown"}`}
+                        className="hover:underline"
+                      >
+                        {blog.author?.username || "Unknown"}
+                      </Link>
+                      {blog.isPrivate && <LockClosedIcon className="h-3 w-3 md:h-4 md:w-4 inline ml-1 text-red-500" />}
+                    </span>
                   </div>
-                </Link>
+                </div>
+                {/* Overlay for hover effect, linked to blog page */}
+                <Link
+                  to={`/blogpage/${blog._id}`}
+                  className="absolute inset-0 bg-gradient-to-t from-blue-500/80 to-transparent opacity-0 group-hover:opacity-100"
+                />
               </motion.div>
             ))}
           </motion.div>

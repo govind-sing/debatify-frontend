@@ -41,8 +41,8 @@ const DiscussionCard = ({ discussion }) => (
     whileHover={{ scale: 1.03, transition: { duration: 0.2 } }}
     className="relative group bg-white rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl"
   >
-    <Link to={`/discussionpage/${discussion._id}?section=discussion`}>
-      <div className="p-4 md:p-6 relative z-10">
+    <div className="p-4 md:p-6 relative z-10">
+      <Link to={`/discussionpage/${discussion._id}?section=discussion`}>
         <h3 className="text-lg md:text-xl font-semibold text-gray-800 group-hover:text-white transition-colors duration-300">
           {discussion.title || "Untitled Discussion"}
         </h3>
@@ -52,15 +52,15 @@ const DiscussionCard = ({ discussion }) => (
         <p className="text-xs md:text-sm text-blue-500 group-hover:text-yellow-300 mt-3 font-medium transition-colors duration-300">
           {discussion.category || "Uncategorized"}
         </p>
-        <p className="text-xs md:text-sm text-gray-500 group-hover:text-gray-300 mt-1 transition-colors duration-300">
-          By:{" "}
-          <Link to={`/profile/${discussion.author?.username || "unknown"}`} className="hover:underline">
-            {discussion.author?.username || "Unknown"}
-          </Link>
-          {discussion.isPrivate && <LockClosedIcon className="h-3 w-3 inline ml-1 text-red-500" />}
-        </p>
-      </div>
-    </Link>
+      </Link>
+      <p className="text-xs md:text-sm text-gray-500 group-hover:text-gray-300 mt-1 transition-colors duration-300">
+        By:{" "}
+        <Link to={`/profile/${discussion.author?.username || "unknown"}`} className="hover:underline">
+          {discussion.author?.username || "Unknown"}
+        </Link>
+        {discussion.isPrivate && <LockClosedIcon className="h-3 w-3 inline ml-1 text-red-500" />}
+      </p>
+    </div>
   </motion.div>
 );
 
@@ -70,8 +70,8 @@ const DebateCard = ({ debate }) => (
     whileHover={{ scale: 1.03, transition: { duration: 0.2 } }}
     className="relative group bg-white rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl"
   >
-    <Link to={`/debatepage/${debate._id}?section=debate`}>
-      <div className="p-4 md:p-6 relative z-10">
+    <div className="p-4 md:p-6 relative z-10">
+      <Link to={`/debatepage/${debate._id}?section=debate`}>
         <h3 className="text-lg md:text-xl font-semibold text-gray-800 group-hover:text-white transition-colors duration-300">
           {debate.title || "Untitled Debate"}
         </h3>
@@ -81,15 +81,15 @@ const DebateCard = ({ debate }) => (
         <p className="text-xs md:text-sm text-blue-500 group-hover:text-yellow-300 mt-3 font-medium transition-colors duration-300">
           {debate.category || "Uncategorized"}
         </p>
-        <p className="text-xs md:text-sm text-gray-500 group-hover:text-gray-300 mt-1 transition-colors duration-300">
-          By:{" "}
-          <Link to={`/profile/${debate.author?.username || "unknown"}`} className="hover:underline">
-            {debate.author?.username || "Unknown"}
-          </Link>
-          {debate.isPrivate && <LockClosedIcon className="h-3 w-3 inline ml-1 text-red-500" />}
-        </p>
-      </div>
-    </Link>
+      </Link>
+      <p className="text-xs md:text-sm text-gray-500 group-hover:text-gray-300 mt-1 transition-colors duration-300">
+        By:{" "}
+        <Link to={`/profile/${debate.author?.username || "unknown"}`} className="hover:underline">
+          {debate.author?.username || "Unknown"}
+        </Link>
+        {debate.isPrivate && <LockClosedIcon className="h-3 w-3 inline ml-1 text-red-500" />}
+      </p>
+    </div>
   </motion.div>
 );
 
@@ -99,8 +99,8 @@ const BlogCard = ({ blog }) => (
     whileHover={{ scale: 1.03, transition: { duration: 0.2 } }}
     className="relative group bg-white rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl"
   >
-    <Link to={`/blogpage/${blog._id}?section=blog`}>
-      <div className="p-4 md:p-6 relative z-10">
+    <div className="p-4 md:p-6 relative z-10">
+      <Link to={`/blogpage/${blog._id}?section=blog`}>
         <h3 className="text-lg md:text-xl font-semibold text-gray-800 group-hover:text-white transition-colors duration-300">
           {blog.title || "Untitled Blog"}
         </h3>
@@ -122,16 +122,16 @@ const BlogCard = ({ blog }) => (
           <span className="text-xs md:text-sm text-blue-500 group-hover:text-yellow-300 font-medium transition-colors duration-300">
             Votes: {(blog.upvotes || 0) - (blog.downvotes || 0)}
           </span>
-          <p className="text-xs md:text-sm text-gray-500 group-hover:text-gray-300 transition-colors duration-300">
-            By:{" "}
-            <Link to={`/profile/${blog.author?.username || "unknown"}`} className="hover:underline">
-              {blog.author?.username || "Unknown"}
-            </Link>
-            {blog.isPrivate && <LockClosedIcon className="h-3 w-3 inline ml-1 text-red-500" />}
-          </p>
         </div>
-      </div>
-    </Link>
+      </Link>
+      <p className="text-xs md:text-sm text-gray-500 group-hover:text-gray-300 mt-1 transition-colors duration-300">
+        By:{" "}
+        <Link to={`/profile/${blog.author?.username || "unknown"}`} className="hover:underline">
+          {blog.author?.username || "Unknown"}
+        </Link>
+        {blog.isPrivate && <LockClosedIcon className="h-3 w-3 inline ml-1 text-red-500" />}
+      </p>
+    </div>
   </motion.div>
 );
 
@@ -165,21 +165,26 @@ const Home = () => {
   const [debate, setDebates] = useState([]);
   const [blog, setBlogs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
+        setError(null);
+        const token = localStorage.getItem("token");
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
         const [disRes, debRes, blogRes] = await Promise.all([
-          API.get("/discussions"),
-          API.get("/debates"),
-          API.get("/blogs"),
+          API.get("/discussions", { headers }),
+          API.get("/debates", { headers }),
+          API.get("/blogs", { headers }),
         ]);
         setDiscussions(Array.isArray(disRes.data) ? disRes.data : []);
         setDebates(Array.isArray(debRes.data) ? debRes.data : []);
         setBlogs(Array.isArray(blogRes.data) ? blogRes.data : []);
       } catch (err) {
-        console.error("Error fetching data:", err);
+        console.error("Error fetching data:", err.response?.data || err.message);
+        setError("Failed to load content. Please try again later.");
       } finally {
         setLoading(false);
       }
@@ -257,7 +262,7 @@ const Home = () => {
           transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
           className="inline-block"
         >
-          <SparklesIcon className="h-10 w-10 sm:h-12 sm:w-12 md:h-14 md:w-14 lg:h-16 lg:w-16 mx-auto mb-4 text-yellow-300" />
+          <SparklesIcon className="h-10 w-10 sm:h-12 sm:w-12 md:h-16 md:w-16 lg:h-16 lg:w-16 mx-auto mb-4 text-yellow-300" />
         </motion.div>
         <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight mb-3 sm:mb-4 font-sans">
           <span className="text-white">Welcome to </span>
@@ -274,7 +279,11 @@ const Home = () => {
       {/* Main Content */}
       <div className="p-4 md:p-8 pt-6 sm:pt-8 md:pt-10 max-w-6xl mx-auto">
         {renderSectionToggle()}
-
+        {error && (
+          <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md text-center text-sm md:text-base">
+            {error}
+          </div>
+        )}
         {loading ? (
           <div className="text-center">
             <motion.div

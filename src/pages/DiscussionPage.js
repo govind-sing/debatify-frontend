@@ -14,11 +14,16 @@ const DiscussionPage = () => {
   const [commenting, setCommenting] = useState(false);
   const [isBookmarking, setIsBookmarking] = useState(false);
   const [error, setError] = useState(null);
+  const [pollingError, setPollingError] = useState(null);
   const [passcode, setPasscode] = useState("");
   const [passcodeRequired, setPasscodeRequired] = useState(false);
   const [enteredPasscode, setEnteredPasscode] = useState(null);
   const [sortBy, setSortBy] = useState("latest");
   const [userId, setUserId] = useState(null);
+  const [isPolling, setIsPolling] = useState(true);
+
+  // Validate MongoDB ObjectId format
+  const isValidObjectId = (id) => /^[0-9a-fA-F]{24}$/.test(id);
 
   // Extract userId from JWT token
   useEffect(() => {
@@ -37,6 +42,13 @@ const DiscussionPage = () => {
 
   const fetchDiscussion = useCallback(
     async (enteredPasscodeParam = null) => {
+      if (!isValidObjectId(id)) {
+        setError("Invalid discussion ID");
+        setLoading(false);
+        setIsPolling(false);
+        return;
+      }
+
       try {
         setLoading(true);
         setError(null);
@@ -69,11 +81,17 @@ const DiscussionPage = () => {
   }, [fetchDiscussion]);
 
   useEffect(() => {
-    const intervalId = setInterval(async () => {
+    if (!isValidObjectId(id)) {
+      setPollingError("Invalid discussion ID. Polling stopped.");
+      setIsPolling(false);
+      return;
+    }
+
+    const pollDiscussion = async () => {
       try {
         const url = enteredPasscode
           ? `/discussions/${id}?passcode=${encodeURIComponent(enteredPasscode)}&poll=true`
-          : `/discussions/${id}&poll=true`;
+          : `/discussions/${id}?poll=true`;
         const { data } = await API.get(url);
         const newDiscussion = data;
 
@@ -123,11 +141,20 @@ const DiscussionPage = () => {
         );
       } catch (error) {
         console.error("Error polling discussion:", error);
+        if (error.response?.status === 400) {
+          setPollingError(error.response?.data?.message || "Invalid request. Polling stopped.");
+          setIsPolling(false);
+        }
       }
-    }, 2000);
+    };
+
+    let intervalId;
+    if (isPolling) {
+      intervalId = setInterval(pollDiscussion, 2000);
+    }
 
     return () => clearInterval(intervalId);
-  }, [id, originalComments, enteredPasscode]);
+  }, [id, originalComments, enteredPasscode, isPolling]);
 
   const sortedComments = useMemo(() => {
     const commentsCopy = [...originalComments];
@@ -278,6 +305,11 @@ const DiscussionPage = () => {
       {error && (
         <div className="mb-4 p-2 md:p-3 bg-red-100 text-red-700 rounded-md text-center text-sm md:text-base">
           {error}
+        </div>
+      )}
+      {pollingError && (
+        <div className="mb-4 p-2 md:p-3 bg-red-100 text-red-700 rounded-md text-center text-sm md:text-base">
+          {pollingError}
         </div>
       )}
 

@@ -28,12 +28,24 @@ const BlogPage = () => {
   const [voting, setVoting] = useState(false);
   const [bookmarking, setBookmarking] = useState(false);
   const [error, setError] = useState(null);
+  const [pollingError, setPollingError] = useState(null);
   const [passcode, setPasscode] = useState("");
   const [passcodeRequired, setPasscodeRequired] = useState(false);
   const [enteredPasscode, setEnteredPasscode] = useState(null);
+  const [isPolling, setIsPolling] = useState(true);
+
+  // Validate MongoDB ObjectId format
+  const isValidObjectId = (id) => /^[0-9a-fA-F]{24}$/.test(id);
 
   const fetchBlog = useCallback(
     async (enteredPasscodeParam = null) => {
+      if (!isValidObjectId(id)) {
+        setError("Invalid blog ID");
+        setLoading(false);
+        setIsPolling(false);
+        return;
+      }
+
       try {
         setLoading(true);
         setError(null);
@@ -65,10 +77,16 @@ const BlogPage = () => {
   }, [fetchBlog]);
 
   const pollBlog = useCallback(async () => {
+    if (!isValidObjectId(id)) {
+      setPollingError("Invalid blog ID. Polling stopped.");
+      setIsPolling(false);
+      return;
+    }
+
     try {
       const url = enteredPasscode
         ? `/blogs/${id}?passcode=${encodeURIComponent(enteredPasscode)}&poll=true`
-        : `/blogs/${id}&poll=true`;
+        : `/blogs/${id}?poll=true`;
       const { data } = await API.get(url);
       const newBlog = data;
 
@@ -98,13 +116,20 @@ const BlogPage = () => {
       });
     } catch (error) {
       console.error("Error polling blog:", error);
+      if (error.response?.status === 400) {
+        setPollingError(error.response?.data?.message || "Invalid request. Polling stopped.");
+        setIsPolling(false);
+      }
     }
   }, [id, enteredPasscode]);
 
   useEffect(() => {
-    const intervalId = setInterval(pollBlog, 5000);
+    let intervalId;
+    if (isPolling) {
+      intervalId = setInterval(pollBlog, 5000);
+    }
     return () => clearInterval(intervalId);
-  }, [pollBlog]);
+  }, [pollBlog, isPolling]);
 
   const handleVote = useCallback(async (voteType) => {
     try {
@@ -240,6 +265,12 @@ const BlogPage = () => {
   return (
     <div className="min-h-screen bg-gray-50 md:ml-64">
       <style>{mediaStyles}</style>
+      {error && (
+        <div className="mb-4 md:mb-6 p-3 md:p-4 bg-red-100 text-red-700 rounded-lg text-center text-sm md:text-base">{error}</div>
+      )}
+      {pollingError && (
+        <div className="mb-4 md:mb-6 p-3 md:p-4 bg-red-100 text-red-700 rounded-lg text-center text-sm md:text-base">{pollingError}</div>
+      )}
       <header className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white py-8 md:py-12">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.h1
@@ -263,9 +294,6 @@ const BlogPage = () => {
       </header>
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 -mt-6 md:-mt-8">
         <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 md:p-8">
-          {error && (
-            <div className="mb-4 md:mb-6 p-3 md:p-4 bg-red-100 text-red-700 rounded-lg text-center text-sm md:text-base">{error}</div>
-          )}
           {blog.fileUrls && blog.fileUrls.length > 0 && (
             <div className="mt-4 md:mt-6 grid grid-cols-1 gap-4 md:gap-6">
               {blog.fileUrls.map((fileUrl, index) => (
