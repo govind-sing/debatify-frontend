@@ -334,10 +334,10 @@ const ProfilePage = () => {
  <div className="relative group">
  <img
  src={
- user?.profilePicture
- ? `${BACKEND_BASE_URL}${user.profilePicture}`
- : `${BACKEND_BASE_URL}/images/default-avatar.png`
- }
+  user?.profilePicture
+    ? user.profilePicture   
+    : "/images/default-avatar.png"
+}
  alt="profile"
  className="w-40 h-40 rounded-full object-cover border-4 border-white bg-gradient-to-r from-yellow-400 to-pink-500 p-1 group-hover:scale-110 transition-transform duration-300 shadow-xl transform hover:rotate-3"
  onError={(e) => (e.target.src = `${BACKEND_BASE_URL}/images/default-avatar.png`)}
