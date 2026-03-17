@@ -5,7 +5,7 @@ import { UserRemoveIcon, CogIcon, PencilIcon, CameraIcon, LockClosedIcon, XIcon 
 import { motion, AnimatePresence } from "framer-motion";
 
 const BACKEND_BASE_URL = API.defaults.baseURL.replace("/api", "");
-const DEFAULT_AVATAR = "https://res.cloudinary.com/doqk3n7wo/image/upload/v1758427459/samples/outdoor-woman.jpg";
+const DEFAULT_AVATAR = "https://res.cloudinary.com/doqk3n7wo/image/upload/v1758427453/samples/animals/kitten-playing.gif";
 
 function getToken() {
   return localStorage.getItem("token");
