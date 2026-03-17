@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
-import API from "../api/axiosInstance";
-import { LockClosedIcon, SparklesIcon } from "@heroicons/react/solid";
+import React, { useState, useEffect, useRef } from "react";
+import { Link } from "react-router-dom";
+import { motion, useScroll, useTransform } from "framer-motion";
+import { SparklesIcon } from "@heroicons/react/solid";
 
-// Typewriter Effect Component for Tagline
+// ── Typewriter (kept, no API deps) ──────────────────────────────
 const TypewriterText = ({ texts }) => {
   const [currentText, setCurrentText] = useState("");
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -12,383 +11,451 @@ const TypewriterText = ({ texts }) => {
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
+    const text = texts[currentIndex];
     const handleTyping = () => {
-      const text = texts[currentIndex];
       if (!isDeleting && charIndex < text.length) {
         setCurrentText(text.substring(0, charIndex + 1));
-        setCharIndex(charIndex + 1);
+        setCharIndex(c => c + 1);
       } else if (isDeleting && charIndex > 0) {
         setCurrentText(text.substring(0, charIndex - 1));
-        setCharIndex(charIndex - 1);
+        setCharIndex(c => c - 1);
       } else if (!isDeleting && charIndex === text.length) {
-        setTimeout(() => setIsDeleting(true), 1000);
+        setTimeout(() => setIsDeleting(true), 1400);
       } else if (isDeleting && charIndex === 0) {
         setIsDeleting(false);
-        setCurrentIndex((currentIndex + 1) % texts.length);
+        setCurrentIndex(i => (i + 1) % texts.length);
       }
     };
-
-    const timer = setTimeout(handleTyping, isDeleting ? 50 : 100);
+    const timer = setTimeout(handleTyping, isDeleting ? 45 : 95);
     return () => clearTimeout(timer);
   }, [charIndex, isDeleting, currentIndex, texts]);
 
   return (
-    <span className="text-yellow-300 font-semibold">
-      {currentText}
-      <span className="animate-pulse">|</span>
+    <span className="relative">
+      <span style={{ color: "#D97706" }}>{currentText}</span>
+      <span className="animate-pulse" style={{ color: "#D97706" }}>|</span>
     </span>
   );
 };
 
-// Discussion Card Component
-const DiscussionCard = ({ discussion }) => (
-  <motion.div
-    whileHover={{ y: -4, transition: { duration: 0.2 } }}
-    className="group bg-white rounded-2xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden border border-blue-50"
-  >
-    <div className="h-1 w-full bg-gradient-to-r from-blue-400 to-blue-600" />
-    <div className="p-5">
-      <span className="inline-block bg-blue-50 text-blue-600 text-xs font-semibold px-2.5 py-1 rounded-full mb-3">
-        💬 Discussion
-      </span>
-      <Link to={`/discussionpage/${discussion._id}?section=discussion`}>
-        <h3 className="text-base font-bold text-gray-900 group-hover:text-blue-600 transition-colors duration-200 line-clamp-2 mb-2">
-          {discussion.title || "Untitled Discussion"}
-        </h3>
-        <p className="text-gray-500 text-sm line-clamp-2 leading-relaxed">
-          {discussion.description ? discussion.description.substring(0, 80) + "..." : "No description"}
-        </p>
-      </Link>
-      <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
-        <p className="text-xs text-gray-400">
-          By{" "}
-          <Link
-            to={`/profile/${discussion.author?.username || "unknown"}`}
-            className="font-semibold text-gray-600 hover:text-blue-600 transition-colors"
-          >
-            {discussion.author?.username || "Unknown"}
-          </Link>
-          {discussion.isPrivate && <LockClosedIcon className="h-3 w-3 inline ml-1 text-red-400" />}
-        </p>
-        <span className="text-xs font-medium text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full">
-          {discussion.category || "General"}
-        </span>
-      </div>
-    </div>
-  </motion.div>
-);
-
-// Debate Card Component
-const DebateCard = ({ debate }) => (
-  <motion.div
-    whileHover={{ y: -4, transition: { duration: 0.2 } }}
-    className="group bg-white rounded-2xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden border border-purple-50"
-  >
-    <div className="h-1 w-full bg-gradient-to-r from-purple-400 to-purple-600" />
-    <div className="p-5">
-      <span className="inline-block bg-purple-50 text-purple-600 text-xs font-semibold px-2.5 py-1 rounded-full mb-3">
-        ⚔️ Debate
-      </span>
-      <Link to={`/debatepage/${debate._id}?section=debate`}>
-        <h3 className="text-base font-bold text-gray-900 group-hover:text-purple-600 transition-colors duration-200 line-clamp-2 mb-2">
-          {debate.title || "Untitled Debate"}
-        </h3>
-        <p className="text-gray-500 text-sm line-clamp-2 leading-relaxed">
-          {debate.openingArgument ? debate.openingArgument.substring(0, 80) + "..." : "No argument"}
-        </p>
-      </Link>
-      <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
-        <p className="text-xs text-gray-400">
-          By{" "}
-          <Link
-            to={`/profile/${debate.author?.username || "unknown"}`}
-            className="font-semibold text-gray-600 hover:text-purple-600 transition-colors"
-          >
-            {debate.author?.username || "Unknown"}
-          </Link>
-          {debate.isPrivate && <LockClosedIcon className="h-3 w-3 inline ml-1 text-red-400" />}
-        </p>
-        <span className="text-xs font-medium text-purple-500 bg-purple-50 px-2 py-0.5 rounded-full">
-          {debate.category || "General"}
-        </span>
-      </div>
-    </div>
-  </motion.div>
-);
-
-// Blog Card Component
-const BlogCard = ({ blog }) => (
-  <motion.div
-    whileHover={{ y: -4, transition: { duration: 0.2 } }}
-    className="group bg-white rounded-2xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden border border-pink-50"
-  >
-    <div className="h-1 w-full bg-gradient-to-r from-pink-400 to-pink-600" />
-    <div className="p-5">
-      <span className="inline-block bg-pink-50 text-pink-600 text-xs font-semibold px-2.5 py-1 rounded-full mb-3">
-        ✍️ Blog
-      </span>
-      <Link to={`/blogpage/${blog._id}?section=blog`}>
-        <h3 className="text-base font-bold text-gray-900 group-hover:text-pink-600 transition-colors duration-200 line-clamp-2 mb-2">
-          {blog.title || "Untitled Blog"}
-        </h3>
-        <p className="text-gray-500 text-sm line-clamp-2 leading-relaxed">
-          {blog.content ? blog.content.substring(0, 80) + "..." : "No content available"}
-        </p>
-        {blog.fileUrl && (
-          <p className="mt-2 text-xs text-pink-500 font-medium">
-            📎{" "}
-            {blog.fileUrl.endsWith(".pdf")
-              ? "PDF Attached"
-              : blog.fileUrl.match(/\.(mp4|webm|ogg)$/)
-              ? "Video Attached"
-              : blog.fileUrl.match(/\.(mp3|wav|ogg)$/)
-              ? "Audio Attached"
-              : "Image Attached"}
-          </p>
-        )}
-        <div className="mt-2 flex justify-between items-center">
-          <span className="text-xs text-pink-500 font-medium">
-            Votes: {(blog.upvotes || 0) - (blog.downvotes || 0)}
-          </span>
-        </div>
-      </Link>
-      <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
-        <p className="text-xs text-gray-400">
-          By{" "}
-          <Link
-            to={`/profile/${blog.author?.username || "unknown"}`}
-            className="font-semibold text-gray-600 hover:text-pink-600 transition-colors"
-          >
-            {blog.author?.username || "Unknown"}
-          </Link>
-          {blog.isPrivate && <LockClosedIcon className="h-3 w-3 inline ml-1 text-red-400" />}
-        </p>
-      </div>
-    </div>
-  </motion.div>
-);
-
-// See More Card
-const SeeMoreCard = ({ section }) => {
-  const gradients = {
-    discussion: "from-blue-500 to-blue-700",
-    debate: "from-purple-500 to-purple-700",
-    blog: "from-pink-500 to-pink-700",
-  };
-
-  return (
-    <motion.div
-      whileHover={{ y: -4, transition: { duration: 0.2 } }}
-      className="rounded-2xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden"
-    >
-      <Link
-        to={`/${section}`}
-        className={`flex flex-col items-center justify-center h-full min-h-[160px] bg-gradient-to-br ${gradients[section]} text-white p-6 text-center`}
-      >
-        <span className="text-3xl mb-3">→</span>
-        <h3 className="text-base font-bold">
-          See All {section.charAt(0).toUpperCase() + section.slice(1)}s
-        </h3>
-        <p className="text-xs opacity-75 mt-1">Explore more content</p>
-      </Link>
-    </motion.div>
-  );
-};
-
-const Home = () => {
-  const location = useLocation();
-  const navigate = useNavigate();
-
-  // ✅ FIX 1: Declare state BEFORE any useEffect that references it.
-  // Read the section param once for the initial value — no effect needed.
-  const initialSection = new URLSearchParams(location.search).get("section");
-  const validSections = ["discussion", "debate", "blog"];
-  const [activeSection, setActiveSection] = useState(
-    validSections.includes(initialSection) ? initialSection : "discussion"
-  );
-
-  const [discussion, setDiscussions] = useState([]);
-  const [debate, setDebates] = useState([]);
-  const [blog, setBlogs] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-
-  // ✅ FIX 2: Sync URL → state ONLY when the URL search string actually changes.
-  // Do NOT call navigate() here — that would change location.search and re-trigger
-  // this effect, creating an infinite loop.
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const section = params.get("section");
-    if (validSections.includes(section)) {
-      setActiveSection((prev) => (prev !== section ? section : prev)); // avoid redundant state update
-    }
-  }, [location.search]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ✅ FIX 3: Fetch runs exactly once on mount. Empty dependency array is correct
-  // here because we never want to re-fetch just because location or activeSection changed.
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const token = localStorage.getItem("token");
-        const headers = token ? { Authorization: `Bearer ${token}` } : {};
-        const [disRes, debRes, blogRes] = await Promise.all([
-          API.get("/discussions", { headers }),
-          API.get("/debates", { headers }),
-          API.get("/blogs", { headers }),
-        ]);
-        setDiscussions(Array.isArray(disRes.data) ? disRes.data : []);
-        setDebates(Array.isArray(debRes.data) ? debRes.data : []);
-        setBlogs(Array.isArray(blogRes.data) ? blogRes.data : []);
-      } catch (err) {
-        console.error("Error fetching data:", err.response?.data || err.message);
-        setError("Failed to load content. Please try again later.");
-      } finally {
-        setLoading(false);
+// ── Floating orb background ──────────────────────────────────────
+const FloatingOrbs = () => (
+  <div className="absolute inset-0 overflow-hidden pointer-events-none">
+    {[
+      { w: 600, h: 600, top: "-15%", left: "-10%", color: "rgba(99,102,241,0.07)", dur: "18s" },
+      { w: 500, h: 500, top: "40%",  left: "60%",  color: "rgba(236,72,153,0.05)", dur: "22s" },
+      { w: 400, h: 400, top: "70%",  left: "5%",   color: "rgba(217,119,6,0.05)",  dur: "16s" },
+      { w: 300, h: 300, top: "15%",  left: "75%",  color: "rgba(16,185,129,0.05)", dur: "20s" },
+    ].map((orb, i) => (
+      <div
+        key={i}
+        style={{
+          position: "absolute",
+          width: orb.w,
+          height: orb.h,
+          top: orb.top,
+          left: orb.left,
+          background: `radial-gradient(circle, ${orb.color} 0%, transparent 70%)`,
+          borderRadius: "50%",
+          animation: `floatOrb ${orb.dur} ease-in-out infinite alternate`,
+          animationDelay: `${i * 2.5}s`,
+        }}
+      />
+    ))}
+    <style>{`
+      @keyframes floatOrb {
+        0%   { transform: translate(0, 0) scale(1); }
+        100% { transform: translate(30px, 20px) scale(1.06); }
       }
-    };
-    fetchData();
-  }, []); // ✅ empty array = runs once on mount only
+    `}</style>
+  </div>
+);
 
-  const sortByPopularity = useCallback((items) => {
-    return [...items].sort((a, b) => {
-      const popA = (a.comments?.length || 0) + (a.upvotes?.length || 0) + (a.downvotes?.length || 0);
-      const popB = (b.comments?.length || 0) + (b.upvotes?.length || 0) + (b.downvotes?.length || 0);
-      return popB - popA;
-    });
-  }, []);
+// ── Noise texture overlay ─────────────────────────────────────────
+const NoiseOverlay = () => (
+  <div
+    className="absolute inset-0 pointer-events-none opacity-[0.02]"
+    style={{
+      backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
+      backgroundRepeat: "repeat",
+      backgroundSize: "128px",
+    }}
+  />
+);
 
-  const renderSectionCards = (items, renderCard, section) => {
-    const sorted = sortByPopularity(items);
-    const cards = sorted.slice(0, 8).map((item, index) => (
-      <motion.div
-        key={item._id}
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: index * 0.1 }}
-      >
-        {renderCard(item)}
-      </motion.div>
-    ));
-    cards.push(
-      <motion.div
-        key="see-more"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.8 }}
-      >
-        <SeeMoreCard section={section} />
-      </motion.div>
-    );
-    return cards;
-  };
+// ── Section card data ─────────────────────────────────────────────
+const SECTIONS = [
+  {
+    to: "/debate",
+    emoji: "⚔️",
+    label: "Debates",
+    tagline: "Take a stand. Defend it.",
+    desc: "Structured head-to-head arguments on the topics that divide us. Pick your side and make your case.",
+    accent: "#6366F1",
+    bg: "rgba(99,102,241,0.05)",
+    border: "rgba(99,102,241,0.18)",
+    hoverBorder: "#6366F1",
+    stat: "1,200+ debates",
+  },
+  {
+    to: "/discussion",
+    emoji: "💬",
+    label: "Discussions",
+    tagline: "Think out loud, together.",
+    desc: "Open-ended conversations where every perspective matters. No sides — just ideas flowing freely.",
+    accent: "#10B981",
+    bg: "rgba(16,185,129,0.05)",
+    border: "rgba(16,185,129,0.18)",
+    hoverBorder: "#10B981",
+    stat: "3,400+ threads",
+  },
+  {
+    to: "/blog",
+    emoji: "✍️",
+    label: "Blogs",
+    tagline: "Write. Publish. Inspire.",
+    desc: "Long-form thoughts, essays, and stories from voices across the community. Read deeply or write boldly.",
+    accent: "#EC4899",
+    bg: "rgba(236,72,153,0.05)",
+    border: "rgba(236,72,153,0.18)",
+    hoverBorder: "#EC4899",
+    stat: "800+ articles",
+  },
+];
 
-  const sectionMeta = {
-    discussion: { color: "from-blue-500 to-blue-600", label: "Discussion" },
-    debate: { color: "from-purple-500 to-purple-600", label: "Debate" },
-    blog: { color: "from-pink-500 to-pink-600", label: "Blog" },
-  };
+// ── How it works steps ────────────────────────────────────────────
+const STEPS = [
+  { n: "01", title: "Create an account", body: "Sign up in seconds. No gatekeeping — your voice belongs here from day one." },
+  { n: "02", title: "Pick your arena",   body: "Step into Debates for structured arguments, Discussions for open thought, or Blogs for deep dives." },
+  { n: "03", title: "Engage & grow",     body: "Comment, upvote, follow thinkers you respect, and watch your perspective sharpen with every exchange." },
+];
 
-  // ✅ FIX 4: navigate() is called only from explicit user interaction (button click),
-  // never from inside a useEffect. This is the only correct place to call it.
-  const handleSectionChange = (sec) => {
-    setActiveSection(sec);
-    navigate(`/?section=${sec}`, { replace: true });
-  };
-
-  const renderSectionToggle = () => (
-    <div className="flex gap-2 mb-8 justify-center w-full bg-white rounded-2xl shadow-md p-2 max-w-sm mx-auto">
-      {["discussion", "debate", "blog"].map((sec) => (
-        <motion.button
-          key={sec}
-          onClick={() => handleSectionChange(sec)}
-          whileTap={{ scale: 0.97 }}
-          className={`flex-1 px-3 py-2 rounded-xl transition-all duration-300 text-sm font-semibold ${
-            activeSection === sec
-              ? `bg-gradient-to-r ${sectionMeta[sec].color} text-white shadow-md`
-              : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-          }`}
-        >
-          {sectionMeta[sec].label}
-        </motion.button>
-      ))}
-    </div>
-  );
+// ─────────────────────────────────────────────────────────────────
+const Home = () => {
+  const heroRef = useRef(null);
+  const { scrollYProgress } = useScroll({ target: heroRef, offset: ["start start", "end start"] });
+  const heroY = useTransform(scrollYProgress, [0, 1], ["0%", "25%"]);
+  const heroOpacity = useTransform(scrollYProgress, [0, 0.7], [1, 0]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-100 via-blue-50 to-purple-50 md:ml-64">
-      {/* Hero Section */}
-      <motion.div
-        initial={{ opacity: 0, y: 30 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, ease: "easeOut" }}
-        className="relative bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white py-12 md:py-20 px-4 md:px-8 text-center shadow-xl overflow-hidden mb-8 md:mb-12"
-      >
-        {/* Decorative blobs */}
-        <div className="absolute top-0 left-0 w-72 h-72 bg-white opacity-5 rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
-        <div className="absolute bottom-0 right-0 w-96 h-96 bg-white opacity-5 rounded-full translate-x-1/3 translate-y-1/3 pointer-events-none" />
+    <div
+      className="min-h-screen md:ml-64 overflow-x-hidden"
+      style={{
+        background: "#FFFFFF",
+        fontFamily: "'Sora', 'DM Sans', sans-serif",
+        color: "#1A1830",
+      }}
+    >
+      <link
+        href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&family=DM+Mono:wght@400;500&display=swap"
+        rel="stylesheet"
+      />
 
-        <motion.div
-          animate={{ scale: [1, 1.05, 1] }}
-          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-          className="inline-block relative z-10"
-        >
-          <SparklesIcon className="h-12 w-12 md:h-16 md:w-16 mx-auto mb-5 text-yellow-300 drop-shadow-lg" />
+      {/* ══ HERO ══════════════════════════════════════════════════ */}
+      <section
+        ref={heroRef}
+        className="relative min-h-screen flex flex-col items-center justify-center px-6 text-center overflow-hidden"
+        style={{ background: "#F8F7FF" }}
+      >
+        <FloatingOrbs />
+        <NoiseOverlay />
+
+        {/* grid lines */}
+        <div
+          className="absolute inset-0 pointer-events-none opacity-[0.04]"
+          style={{
+            backgroundImage: "linear-gradient(rgba(0,0,0,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.4) 1px, transparent 1px)",
+            backgroundSize: "60px 60px",
+          }}
+        />
+
+        <motion.div style={{ y: heroY, opacity: heroOpacity }} className="relative z-10 max-w-4xl mx-auto">
+          {/* pill badge */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="inline-flex items-center gap-2 mb-8 px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-widest"
+            style={{ background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.25)", color: "#D97706" }}
+          >
+            <SparklesIcon className="h-3.5 w-3.5" />
+            Where ideas clash and clarity emerges
+          </motion.div>
+
+          {/* headline */}
+          <motion.h1
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.1 }}
+            style={{ fontFamily: "'Sora', sans-serif", lineHeight: 1.08 }}
+            className="text-5xl sm:text-6xl md:text-7xl font-extrabold mb-6 tracking-tight"
+          >
+            <span style={{ color: "#1A1830" }}>Welcome to{" "}</span>
+            <br className="hidden sm:block" />
+            <span
+              style={{
+                background: "linear-gradient(135deg, #6366F1 0%, #A855F7 50%, #EC4899 100%)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+              }}
+            >
+              Debatify
+            </span>
+          </motion.h1>
+
+          {/* typewriter sub */}
+          <motion.p
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.25 }}
+            className="text-xl md:text-2xl mb-4 font-light"
+            style={{ color: "#5E5A74" }}
+          >
+            Discover{" "}
+            <TypewriterText texts={["Debates that ignite.", "Discussions that matter.", "Blogs that inspire."]} />
+          </motion.p>
+
+          <motion.p
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.35 }}
+            className="text-base md:text-lg max-w-xl mx-auto mb-10 leading-relaxed"
+            style={{ color: "#8B87A3" }}
+          >
+            A community where every opinion has a stage, every argument has a challenger, and every reader leaves thinking differently.
+          </motion.p>
+
+          {/* CTA buttons */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.45 }}
+            className="flex flex-col sm:flex-row gap-4 justify-center items-center"
+          >
+            <Link
+              to="/login"
+              className="group relative px-8 py-3.5 rounded-xl font-semibold text-sm overflow-hidden transition-all duration-300"
+              style={{ background: "linear-gradient(135deg, #6366F1, #A855F7)", color: "white", boxShadow: "0 0 30px rgba(99,102,241,0.25)" }}
+            >
+              <span className="relative z-10">Get Started Free →</span>
+              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                style={{ background: "linear-gradient(135deg, #4F46E5, #9333EA)" }} />
+            </Link>
+            <Link
+              to="/debate"
+              className="px-8 py-3.5 rounded-xl font-semibold text-sm transition-all duration-300 hover:bg-black/5"
+              style={{ border: "1px solid rgba(0,0,0,0.12)", color: "#5E5A74" }}
+            >
+              Explore without signing up
+            </Link>
+          </motion.div>
         </motion.div>
 
-        <h1 className="relative z-10 text-4xl md:text-6xl font-extrabold tracking-tight mb-4">
-          <span className="text-white">Welcome to </span>
-          <span className="bg-clip-text text-transparent bg-gradient-to-r from-yellow-300 to-orange-400">
-            Debatify!
-          </span>
-        </h1>
-
-        <p className="relative z-10 text-base md:text-lg max-w-2xl mx-auto opacity-90 leading-relaxed mb-4">
-          Join the conversation, share your opinions, and engage in meaningful{" "}
-          <span className="font-semibold">Discussions · Debates · Blogs</span> on topics that matter to you.
-        </p>
-
-        <p className="relative z-10 text-lg md:text-xl font-medium">
-          Discover <TypewriterText texts={["Discussions", "Debates", "Blogs"]} /> that Inspire!
-        </p>
-      </motion.div>
-
-      {/* Main Content */}
-      <div className="px-4 md:px-8 pb-12 max-w-6xl mx-auto">
-        {renderSectionToggle()}
-
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-2xl text-center text-sm shadow-sm">
-            {error}
-          </div>
-        )}
-
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-4">
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-              className="h-10 w-10 border-4 border-blue-500 border-t-transparent rounded-full"
-            />
-            <p className="text-gray-500 text-sm font-medium">Loading amazing content...</p>
-          </div>
-        ) : (
+        {/* scroll hint */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.2, duration: 0.8 }}
+          className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2"
+          style={{ color: "#C4C0D8" }}
+        >
+          <span className="text-[10px] uppercase tracking-widest">scroll</span>
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5 }}
-            className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+            animate={{ y: [0, 6, 0] }}
+            transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+            className="w-0.5 h-8 rounded-full"
+            style={{ background: "linear-gradient(to bottom, rgba(99,102,241,0.5), transparent)" }}
+          />
+        </motion.div>
+      </section>
+
+      {/* ══ SECTION CARDS ════════════════════════════════════════ */}
+      <section className="py-20 px-6" style={{ background: "#FFFFFF" }}>
+        <div className="max-w-5xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="text-center mb-14"
           >
-            {activeSection === "discussion" &&
-              renderSectionCards(discussion, (d) => <DiscussionCard key={d._id} discussion={d} />, "discussion")}
-            {activeSection === "debate" &&
-              renderSectionCards(debate, (d) => <DebateCard key={d._id} debate={d} />, "debate")}
-            {activeSection === "blog" &&
-              renderSectionCards(blog, (b) => <BlogCard key={b._id} blog={b} />, "blog")}
+            <p className="text-xs uppercase tracking-widest mb-3" style={{ color: "#A09DB8" }}>
+              Three arenas. One community.
+            </p>
+            <h2 className="text-3xl md:text-4xl font-bold" style={{ color: "#1A1830" }}>
+              Pick your battlefield
+            </h2>
           </motion.div>
-        )}
-      </div>
+
+          <div className="grid gap-6 md:grid-cols-3">
+            {SECTIONS.map((sec, i) => (
+              <motion.div
+                key={sec.to}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: i * 0.12 }}
+                whileHover={{ y: -6, transition: { duration: 0.2 } }}
+              >
+                <Link
+                  to={sec.to}
+                  className="group block h-full rounded-2xl p-6 transition-all duration-300"
+                  style={{
+                    background: sec.bg,
+                    border: `1px solid ${sec.border}`,
+                    boxShadow: "0 4px 24px rgba(0,0,0,0.06)",
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = sec.hoverBorder}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = sec.border}
+                >
+                  <div className="text-4xl mb-4">{sec.emoji}</div>
+                  <div
+                    className="text-xs font-bold uppercase tracking-widest mb-1"
+                    style={{ color: sec.accent }}
+                  >
+                    {sec.stat}
+                  </div>
+                  <h3 className="text-xl font-bold mb-1" style={{ color: "#1A1830" }}>
+                    {sec.label}
+                  </h3>
+                  <p className="text-sm font-semibold mb-3" style={{ color: sec.accent }}>
+                    {sec.tagline}
+                  </p>
+                  <p className="text-sm leading-relaxed mb-5" style={{ color: "#8B87A3" }}>
+                    {sec.desc}
+                  </p>
+                  <span
+                    className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider transition-all duration-200 group-hover:gap-3"
+                    style={{ color: sec.accent }}
+                  >
+                    Explore {sec.label} →
+                  </span>
+                </Link>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ══ HOW IT WORKS ════════════════════════════════════════ */}
+      <section
+        className="py-20 px-6"
+        style={{ background: "#F8F7FF", borderTop: "1px solid rgba(0,0,0,0.05)" }}
+      >
+        <div className="max-w-4xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="text-center mb-14"
+          >
+            <p className="text-xs uppercase tracking-widest mb-3" style={{ color: "#A09DB8" }}>Simple by design</p>
+            <h2 className="text-3xl md:text-4xl font-bold" style={{ color: "#1A1830" }}>How Debatify works</h2>
+          </motion.div>
+
+          <div className="grid gap-8 md:grid-cols-3">
+            {STEPS.map((step, i) => (
+              <motion.div
+                key={step.n}
+                initial={{ opacity: 0, y: 24 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: i * 0.15 }}
+                className="relative"
+              >
+                {/* connector line */}
+                {i < STEPS.length - 1 && (
+                  <div
+                    className="hidden md:block absolute top-5 left-full w-full h-px -translate-x-6"
+                    style={{ background: "linear-gradient(90deg, rgba(99,102,241,0.2), transparent)" }}
+                  />
+                )}
+                <div
+                  className="text-4xl font-extrabold mb-4 leading-none"
+                  style={{ fontFamily: "'DM Mono', monospace", color: "rgba(99,102,241,0.12)" }}
+                >
+                  {step.n}
+                </div>
+                <h3 className="text-lg font-bold mb-2" style={{ color: "#1A1830" }}>{step.title}</h3>
+                <p className="text-sm leading-relaxed" style={{ color: "#8B87A3" }}>{step.body}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ══ MANIFESTO QUOTE ═════════════════════════════════════ */}
+      <section className="py-24 px-6 text-center relative overflow-hidden" style={{ background: "#FFFFFF" }}>
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ background: "radial-gradient(ellipse 60% 50% at 50% 50%, rgba(99,102,241,0.04) 0%, transparent 70%)" }}
+        />
+        <motion.blockquote
+          initial={{ opacity: 0, scale: 0.96 }}
+          whileInView={{ opacity: 1, scale: 1 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.7 }}
+          className="relative z-10 max-w-2xl mx-auto"
+        >
+          <p
+            className="text-2xl md:text-3xl font-light leading-relaxed mb-6"
+            style={{ color: "#3D3A52", fontStyle: "italic" }}
+          >
+            "The strength of an argument is not in silencing opposition — it's in surviving it."
+          </p>
+          <footer className="text-xs uppercase tracking-widest" style={{ color: "#C4C0D8" }}>
+            The Debatify Manifesto
+          </footer>
+        </motion.blockquote>
+      </section>
+
+      {/* ══ FINAL CTA ════════════════════════════════════════════ */}
+      <section
+        className="py-20 px-6 text-center"
+        style={{ borderTop: "1px solid rgba(0,0,0,0.05)", background: "#F8F7FF" }}
+      >
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6 }}
+          className="max-w-xl mx-auto"
+        >
+          <h2 className="text-3xl md:text-4xl font-bold mb-4" style={{ color: "#1A1830" }}>
+            Your perspective{" "}
+            <span style={{ color: "#6366F1" }}>deserves an audience.</span>
+          </h2>
+          <p className="text-sm mb-8" style={{ color: "#8B87A3" }}>
+            Join thousands of thinkers already challenging assumptions, building arguments, and inspiring change.
+          </p>
+          <Link
+            to="/login"
+            className="inline-block px-10 py-4 rounded-xl font-bold text-sm transition-all duration-300 hover:scale-105"
+            style={{
+              background: "linear-gradient(135deg, #6366F1, #A855F7)",
+              color: "white",
+              boxShadow: "0 0 40px rgba(99,102,241,0.2)",
+            }}
+          >
+            Join Debatify — it's free
+          </Link>
+          <p className="mt-4 text-xs" style={{ color: "#C4C0D8" }}>
+            Already a member?{" "}
+            <Link to="/login" className="hover:text-indigo-500 transition-colors" style={{ color: "#A09DB8" }}>
+              Sign in →
+            </Link>
+          </p>
+        </motion.div>
+      </section>
+
+      {/* ══ FOOTER ═══════════════════════════════════════════════ */}
+      <footer
+        className="py-8 px-6 text-center text-xs"
+        style={{ borderTop: "1px solid rgba(0,0,0,0.06)", color: "#C4C0D8", background: "#FFFFFF" }}
+      >
+        © {new Date().getFullYear()} Debatify. Built for thinkers, arguers, and curious minds.
+      </footer>
     </div>
   );
 };

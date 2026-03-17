@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import API from "../api/axiosInstance";
 import { motion } from "framer-motion";
@@ -10,15 +10,29 @@ const Bookmarks = () => {
   const [error, setError] = useState(null);
   const navigate = useNavigate();
 
+  // ✅ FIX: StrictMode double-invoke guard.
+  // React StrictMode (dev only) mounts → unmounts → remounts every component,
+  // causing useEffect([], []) to fire twice — two identical API calls on every
+  // page load in development. A ref persists across that remount cycle so the
+  // second invocation bails out immediately. Harmless in production (no double
+  // invoke there), but prevents unnecessary Lambda calls during development.
+  const hasFetched = useRef(false);
+
   useEffect(() => {
+    if (hasFetched.current) return;
+    hasFetched.current = true;
+
     const fetchBookmarks = async () => {
       try {
         const token = localStorage.getItem("token");
         if (!token) {
           setError("Please log in to view bookmarks");
+          setLoading(false);
           return;
         }
-        const { data } = await API.get("/bookmarks");
+        const { data } = await API.get("/bookmarks", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         setBookmarks(data);
       } catch (err) {
         console.error("Error fetching bookmarks:", err);
@@ -27,8 +41,9 @@ const Bookmarks = () => {
         setLoading(false);
       }
     };
+
     fetchBookmarks();
-  }, []);
+  }, []); // ✅ empty array + hasFetched ref = exactly one call in dev and production
 
   const handleNavigate = useCallback((item) => {
     if (item.type === "blog") navigate(`/blogpage/${item._id}`);

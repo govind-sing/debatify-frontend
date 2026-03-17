@@ -7,7 +7,7 @@ import { Outlet } from "react-router-dom";
 const Layout = () => (
   <>
     <Navbar />
-    <main className="min-h-screen pb-20"> {/* pb-20 ensures footer won't overlap */}
+    <main className="min-h-screen pb-1"> {/* pb-20 ensures footer won't overlap */}
       <Outlet />
     </main>
     <Footer />
