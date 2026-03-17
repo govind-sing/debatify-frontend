@@ -2,15 +2,15 @@ import React, { useEffect, useState, useRef, useCallback, useMemo } from "react"
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import API from "../api/axiosInstance";
-import {  ArrowLeftIcon, ArrowRightIcon, SearchIcon, LockClosedIcon } from "@heroicons/react/outline";
+import { ArrowLeftIcon, ArrowRightIcon, SearchIcon, LockClosedIcon } from "@heroicons/react/outline";
 
 // ── Floating orb background ──────────────────────────────────────
 const FloatingOrbs = () => (
   <div className="absolute inset-0 overflow-hidden pointer-events-none">
     {[
-      { w: 500, h: 500, top: "-10%", left: "-8%",  color: "rgba(16,185,129,0.07)",  dur: "18s" },
-      { w: 400, h: 400, top: "35%",  left: "62%",  color: "rgba(99,102,241,0.05)",  dur: "22s" },
-      { w: 350, h: 350, top: "65%",  left: "4%",   color: "rgba(59,130,246,0.05)",  dur: "16s" },
+      { w: 500, h: 500, top: "-10%", left: "-8%",  color: "rgba(236,72,153,0.07)", dur: "18s" },
+      { w: 400, h: 400, top: "35%",  left: "62%",  color: "rgba(99,102,241,0.05)", dur: "22s" },
+      { w: 350, h: 350, top: "65%",  left: "4%",   color: "rgba(16,185,129,0.05)", dur: "16s" },
     ].map((orb, i) => (
       <div
         key={i}
@@ -22,13 +22,13 @@ const FloatingOrbs = () => (
           left: orb.left,
           background: `radial-gradient(circle, ${orb.color} 0%, transparent 70%)`,
           borderRadius: "50%",
-          animation: `floatOrbDis ${orb.dur} ease-in-out infinite alternate`,
+          animation: `floatOrbB ${orb.dur} ease-in-out infinite alternate`,
           animationDelay: `${i * 2.5}s`,
         }}
       />
     ))}
     <style>{`
-      @keyframes floatOrbDis {
+      @keyframes floatOrbB {
         0%   { transform: translate(0, 0) scale(1); }
         100% { transform: translate(25px, 18px) scale(1.05); }
       }
@@ -36,17 +36,22 @@ const FloatingOrbs = () => (
   </div>
 );
 
-// ── Category color map ───────────────────────────────────────────
-const CATEGORY_COLORS = {
-  default:     { bg: "rgba(16,185,129,0.08)",  text: "#10B981", border: "rgba(16,185,129,0.2)" },
-  technology:  { bg: "rgba(59,130,246,0.08)",  text: "#3B82F6", border: "rgba(59,130,246,0.2)" },
-  science:     { bg: "rgba(99,102,241,0.08)",  text: "#6366F1", border: "rgba(99,102,241,0.2)" },
-  politics:    { bg: "rgba(239,68,68,0.08)",   text: "#EF4444", border: "rgba(239,68,68,0.2)"  },
-  philosophy:  { bg: "rgba(168,85,247,0.08)",  text: "#A855F7", border: "rgba(168,85,247,0.2)" },
-  society:     { bg: "rgba(236,72,153,0.08)",  text: "#EC4899", border: "rgba(236,72,153,0.2)" },
-  sports:      { bg: "rgba(245,158,11,0.08)",  text: "#F59E0B", border: "rgba(245,158,11,0.2)" },
+// ── File attachment badge ────────────────────────────────────────
+const AttachmentBadge = ({ fileUrl }) => {
+  if (!fileUrl) return null;
+  let label = "📎 Image";
+  if (fileUrl.endsWith(".pdf"))                  label = "📄 PDF";
+  else if (fileUrl.match(/\.(mp4|webm|ogg)$/))   label = "🎬 Video";
+  else if (fileUrl.match(/\.(mp3|wav|ogg)$/))    label = "🎵 Audio";
+  return (
+    <span
+      className="inline-block text-xs font-semibold px-2.5 py-1 rounded-full"
+      style={{ background: "rgba(99,102,241,0.07)", color: "#6366F1", border: "1px solid rgba(99,102,241,0.15)" }}
+    >
+      {label}
+    </span>
+  );
 };
-const getCategoryStyle = (cat = "") => CATEGORY_COLORS[cat.toLowerCase()] || CATEGORY_COLORS.default;
 
 // ── Sort button ──────────────────────────────────────────────────
 const SortBtn = ({ active, onClick, children }) => (
@@ -55,7 +60,7 @@ const SortBtn = ({ active, onClick, children }) => (
     className="px-4 py-1.5 rounded-lg text-sm font-semibold transition-all duration-200"
     style={
       active
-        ? { background: "linear-gradient(135deg, #10B981, #3B82F6)", color: "#fff", boxShadow: "0 2px 12px rgba(16,185,129,0.25)" }
+        ? { background: "linear-gradient(135deg, #EC4899, #A855F7)", color: "#fff", boxShadow: "0 2px 12px rgba(236,72,153,0.25)" }
         : { background: "rgba(0,0,0,0.04)", color: "#5E5A74", border: "1px solid rgba(0,0,0,0.07)" }
     }
   >
@@ -70,8 +75,8 @@ const ViewToggle = ({ viewMode, onAll, onFollowing }) => (
     style={{ background: "rgba(0,0,0,0.04)", border: "1px solid rgba(0,0,0,0.07)" }}
   >
     {[
-      { label: "All Discussions", mode: "all",       onClick: onAll },
-      { label: "Following",       mode: "following", onClick: onFollowing },
+      { label: "All Blogs", mode: "all",       onClick: onAll },
+      { label: "Following", mode: "following", onClick: onFollowing },
     ].map(({ label, mode, onClick }) => (
       <button
         key={mode}
@@ -89,10 +94,13 @@ const ViewToggle = ({ viewMode, onAll, onFollowing }) => (
   </div>
 );
 
-// ── Discussion card — entire card is the link ────────────────────
-const DiscussionCard = ({ discussion, index }) => {
-  const catStyle = getCategoryStyle(discussion.category);
-  const commentCount = discussion.comments?.length || 0;
+// ── Blog card — FULLY CLICKABLE ──────────────────────────────────
+// The entire card navigates to the blog page via onClick on the motion.div.
+// The author profile link uses e.stopPropagation() so it navigates to the
+// profile instead of the blog page when clicked.
+const BlogCard = ({ blog, index, navigate }) => {
+  const votes = (blog.upvotes || 0) - (blog.downvotes || 0);
+  const voteColor = votes > 0 ? "#10B981" : votes < 0 ? "#EF4444" : "#A09DB8";
 
   return (
     <motion.div
@@ -100,17 +108,18 @@ const DiscussionCard = ({ discussion, index }) => {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: index * 0.07 }}
       whileHover={{ y: -4, transition: { duration: 0.18 } }}
+      onClick={() => navigate(`/blogpage/${blog._id}`)}
+      className="cursor-pointer"
     >
-      <Link
-        to={`/discussionpage/${discussion._id}`}
-        className="group block h-full rounded-2xl p-6 transition-all duration-300"
+      <div
+        className="group h-full rounded-2xl p-6 transition-all duration-300"
         style={{
           background: "#fff",
           border: "1px solid rgba(0,0,0,0.07)",
           boxShadow: "0 2px 16px rgba(0,0,0,0.05)",
         }}
         onMouseEnter={e => {
-          e.currentTarget.style.borderColor = catStyle.text;
+          e.currentTarget.style.borderColor = "#EC4899";
           e.currentTarget.style.boxShadow = "0 8px 32px rgba(0,0,0,0.09)";
         }}
         onMouseLeave={e => {
@@ -118,15 +127,10 @@ const DiscussionCard = ({ discussion, index }) => {
           e.currentTarget.style.boxShadow = "0 2px 16px rgba(0,0,0,0.05)";
         }}
       >
-        {/* category + lock */}
-        <div className="flex items-center justify-between mb-3">
-          <span
-            className="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full"
-            style={{ background: catStyle.bg, color: catStyle.text, border: `1px solid ${catStyle.border}` }}
-          >
-            {discussion.category || "Uncategorized"}
-          </span>
-          {discussion.isPrivate && (
+        {/* attachment + lock */}
+        <div className="flex items-center justify-between mb-3 min-h-[28px]">
+          <AttachmentBadge fileUrl={blog.fileUrl} />
+          {blog.isPrivate && (
             <span
               className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full"
               style={{ background: "rgba(239,68,68,0.06)", color: "#EF4444", border: "1px solid rgba(239,68,68,0.15)" }}
@@ -138,72 +142,77 @@ const DiscussionCard = ({ discussion, index }) => {
 
         {/* title */}
         <h3
-          className="text-base font-bold mb-2 leading-snug transition-colors duration-200 group-hover:text-emerald-600"
+          className="text-base font-bold mb-2 leading-snug transition-colors duration-200 group-hover:text-pink-500"
           style={{ color: "#1A1830", fontFamily: "'Sora', sans-serif" }}
         >
-          {discussion.title || "Untitled Discussion"}
+          {blog.title || "Untitled Blog"}
         </h3>
 
         {/* excerpt */}
         <p className="text-sm leading-relaxed mb-4" style={{ color: "#8B87A3" }}>
-          {discussion.description
-            ? discussion.description.substring(0, 90) + "…"
-            : "No description"}
+          {blog.content ? blog.content.substring(0, 90) + "…" : "No content available"}
         </p>
 
         {/* footer */}
         <div className="flex items-center justify-between pt-3" style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}>
-          <div className="flex items-center gap-2">
+          {/* author — stop propagation so profile link works independently */}
+          <div
+            className="flex items-center gap-2"
+            onClick={e => e.stopPropagation()}
+          >
             <div
-              className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white"
-              style={{ background: `linear-gradient(135deg, ${catStyle.text}, #3B82F6)` }}
+              className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+              style={{ background: "linear-gradient(135deg, #EC4899, #A855F7)" }}
             >
-              {(discussion.author?.username || "U")[0].toUpperCase()}
+              {(blog.author?.username || "U")[0].toUpperCase()}
             </div>
-            <span className="text-xs font-medium" style={{ color: "#5E5A74" }}>
-              {discussion.author?.username || "Unknown"}
-            </span>
+            <Link
+              to={`/profile/${blog.author?.username || "unknown"}`}
+              className="text-xs font-medium hover:text-pink-500 transition-colors"
+              style={{ color: "#5E5A74" }}
+            >
+              {blog.author?.username || "Unknown"}
+            </Link>
           </div>
+
           <div className="flex items-center gap-3">
-            {commentCount > 0 && (
-              <span className="text-xs font-medium" style={{ color: "#A09DB8" }}>
-                💬 {commentCount}
-              </span>
-            )}
-            <span className="text-xs font-semibold" style={{ color: catStyle.text }}>
-              Join →
+            <span className="text-xs font-semibold tabular-nums" style={{ color: voteColor }}>
+              {votes > 0 ? "+" : ""}{votes} votes
+            </span>
+            <span className="text-xs font-semibold" style={{ color: "#EC4899" }}>
+              Read →
             </span>
           </div>
         </div>
-      </Link>
+      </div>
     </motion.div>
   );
 };
 
 // ── Main component ───────────────────────────────────────────────
-const Discussion = () => {
+const Blog = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const viewMode = new URLSearchParams(location.search).get("view") || "all";
 
-  const [discussions, setDiscussions] = useState([]);
+  const [blogs, setBlogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState("latest");
   const [currentPage, setCurrentPage] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
-  const discussionsPerPage = 9;
+  const blogsPerPage = 9;
 
-  const fetchDiscussions = useCallback(async () => {
+  const fetchBlogs = useCallback(async () => {
     try {
       setLoading(true);
-      const endpoint = viewMode === "following" ? "/discussions/following" : "/discussions";
+      const endpoint = viewMode === "following" ? "/blogs/following" : "/blogs";
       const { data } = await API.get(endpoint);
-      setDiscussions(Array.isArray(data) ? data : []);
+      setBlogs(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error("Error fetching discussions:", error);
-      setDiscussions([]);
+      console.error("Error fetching blogs:", error);
+      setBlogs([]);
     } finally {
       setLoading(false);
     }
@@ -211,58 +220,57 @@ const Discussion = () => {
 
   useEffect(() => {
     setCurrentPage(0);
-    fetchDiscussions();
-  }, [fetchDiscussions]);
+    fetchBlogs();
+  }, [fetchBlogs]);
 
-  const filteredDiscussions = useMemo(() => {
-    if (searchQuery.trim() === "") return discussions;
+  const filteredBlogs = useMemo(() => {
+    if (searchQuery.trim() === "") return blogs;
     const lowerQuery = searchQuery.toLowerCase();
-    return discussions.filter((d) =>
-      (d.title || "").toLowerCase().includes(lowerQuery) ||
-      (d.description || "").toLowerCase().includes(lowerQuery) ||
-      (d.category || "").toLowerCase().includes(lowerQuery) ||
-      (d.author?.username || "").toLowerCase().includes(lowerQuery)
-    );
-  }, [searchQuery, discussions]);
+    return blogs.filter((blog) => {
+      const title = blog.title || "";
+      const content = blog.content || "";
+      const username = blog.author?.username || "";
+      return (
+        title.toLowerCase().includes(lowerQuery) ||
+        content.toLowerCase().includes(lowerQuery) ||
+        username.toLowerCase().includes(lowerQuery)
+      );
+    });
+  }, [searchQuery, blogs]);
 
-  const showDropdown = isDropdownOpen && filteredDiscussions.length > 0 && searchQuery.trim() !== "";
+  const showDropdown = isDropdownOpen && filteredBlogs.length > 0 && searchQuery.trim() !== "";
 
   useEffect(() => {
     if (searchQuery.trim() === "") setIsDropdownOpen(false);
-    else setIsDropdownOpen(filteredDiscussions.length > 0);
-  }, [searchQuery, filteredDiscussions]);
+    else setIsDropdownOpen(filteredBlogs.length > 0);
+  }, [searchQuery, filteredBlogs]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setIsDropdownOpen(false);
     };
-    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside, { passive: true });
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const sortedDiscussions = useMemo(() => {
-    return [...discussions].sort((a, b) => {
+  const sortedBlogs = useMemo(() => {
+    return [...filteredBlogs].sort((a, b) => {
       if (sortBy === "latest") return new Date(b.createdAt) - new Date(a.createdAt);
       if (sortBy === "oldest") return new Date(a.createdAt) - new Date(b.createdAt);
       if (sortBy === "popularity") {
-        const pa = (a.comments?.length || 0) + (a.upvotes?.length || 0) + (a.downvotes?.length || 0);
-        const pb = (b.comments?.length || 0) + (b.upvotes?.length || 0) + (b.downvotes?.length || 0);
-        return pb - pa;
+        return ((b.upvotes || 0) + (b.downvotes || 0)) - ((a.upvotes || 0) + (a.downvotes || 0));
       }
       return 0;
     });
-  }, [discussions, sortBy]);
+  }, [filteredBlogs, sortBy]);
 
-  const totalPages = Math.ceil(sortedDiscussions.length / discussionsPerPage);
-  const paginatedDiscussions = sortedDiscussions.slice(
-    currentPage * discussionsPerPage,
-    (currentPage + 1) * discussionsPerPage
-  );
+  const totalPages = Math.ceil(sortedBlogs.length / blogsPerPage);
+  const paginatedBlogs = sortedBlogs.slice(currentPage * blogsPerPage, (currentPage + 1) * blogsPerPage);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
-    if (filteredDiscussions.length > 0) {
-      navigate(`/discussionpage/${filteredDiscussions[0]._id}`);
+    if (filteredBlogs.length > 0) {
+      navigate(`/blogs/${filteredBlogs[0]._id}`);
       setSearchQuery("");
       setIsDropdownOpen(false);
     }
@@ -278,11 +286,9 @@ const Discussion = () => {
         rel="stylesheet"
       />
 
-      {/* ══ HERO HEADER ══════════════════════════════════════════ */}
+      {/* ══ HERO ═════════════════════════════════════════════════ */}
       <section className="relative overflow-hidden px-6 pt-16 pb-14 text-center" style={{ background: "#F8F7FF" }}>
         <FloatingOrbs />
-
-        {/* grid lines */}
         <div
           className="absolute inset-0 pointer-events-none opacity-[0.035]"
           style={{
@@ -297,64 +303,42 @@ const Discussion = () => {
           transition={{ duration: 0.7 }}
           className="relative z-10 max-w-3xl mx-auto"
         >
-          {/* badge */}
           <div
             className="inline-flex items-center gap-2 mb-6 px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-widest"
-            style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.22)", color: "#10B981" }}
+            style={{ background: "rgba(236,72,153,0.08)", border: "1px solid rgba(236,72,153,0.2)", color: "#EC4899" }}
           >
             <motion.span
-              animate={{ scale: [1, 1.2, 1] }}
-              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+              animate={{ rotate: [0, -10, 10, 0] }}
+              transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
               className="inline-block"
-            >
-              💬
-            </motion.span>
-            Conversations that matter
+            >✍️</motion.span>
+            Stories worth reading
           </div>
 
-          {/* headline */}
-          <h1
-            className="text-5xl md:text-6xl font-extrabold mb-4 tracking-tight"
-            style={{ lineHeight: 1.08 }}
-          >
-            <span style={{ color: "#1A1830" }}>Discussion </span>
-            <span
-              style={{
-                background: "linear-gradient(135deg, #10B981 0%, #3B82F6 50%, #6366F1 100%)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-              }}
-            >
+          <h1 className="text-5xl md:text-6xl font-extrabold mb-4 tracking-tight" style={{ lineHeight: 1.08 }}>
+            <span style={{ color: "#1A1830" }}>Blog </span>
+            <span style={{ background: "linear-gradient(135deg, #EC4899 0%, #A855F7 50%, #6366F1 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
               Hub
             </span>
           </h1>
 
           <p className="text-base md:text-lg mb-8 max-w-md mx-auto" style={{ color: "#8B87A3" }}>
-            Share your thoughts, connect with others, and dive into meaningful conversations.
+            Share your thoughts, inspire others, and explore a world of ideas.
           </p>
 
-          {/* actions */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 flex-wrap">
             <Link
-              to="/createDiscussion"
+              to="/createblog"
               className="px-7 py-3 rounded-xl font-bold text-sm transition-all duration-300 hover:scale-105"
-              style={{
-                background: "linear-gradient(135deg, #10B981, #3B82F6)",
-                color: "#fff",
-                boxShadow: "0 0 28px rgba(16,185,129,0.25)",
-              }}
+              style={{ background: "linear-gradient(135deg, #EC4899, #A855F7)", color: "#fff", boxShadow: "0 0 28px rgba(236,72,153,0.25)" }}
             >
-              + Start a Discussion
+              + Write a New Blog
             </Link>
-            <ViewToggle
-              viewMode={viewMode}
-              onAll={() => navigate("/discussion")}
-              onFollowing={() => navigate("?view=following")}
-            />
+            <ViewToggle viewMode={viewMode} onAll={() => navigate("/blog")} onFollowing={() => navigate("?view=following")} />
           </div>
         </motion.div>
 
-        {/* search bar */}
+        {/* search */}
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -368,15 +352,10 @@ const Discussion = () => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by title, category, author…"
+              placeholder="Search blogs by title, content, author…"
               className="w-full pl-10 pr-4 py-3 rounded-xl text-sm transition-all duration-200 focus:outline-none"
-              style={{
-                background: "#fff",
-                border: "1px solid rgba(0,0,0,0.1)",
-                color: "#1A1830",
-                boxShadow: "0 2px 16px rgba(0,0,0,0.06)",
-              }}
-              onFocus={e => { e.target.style.borderColor = "#10B981"; e.target.style.boxShadow = "0 0 0 3px rgba(16,185,129,0.1)"; }}
+              style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.1)", color: "#1A1830", boxShadow: "0 2px 16px rgba(0,0,0,0.06)" }}
+              onFocus={e => { e.target.style.borderColor = "#EC4899"; e.target.style.boxShadow = "0 0 0 3px rgba(236,72,153,0.1)"; }}
               onBlur={e =>  { e.target.style.borderColor = "rgba(0,0,0,0.1)"; e.target.style.boxShadow = "0 2px 16px rgba(0,0,0,0.06)"; }}
             />
           </form>
@@ -384,57 +363,46 @@ const Discussion = () => {
           <AnimatePresence>
             {showDropdown && (
               <motion.div
-                initial={{ opacity: 0, y: -8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
+                initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.18 }}
                 className="absolute top-14 left-0 right-0 rounded-xl overflow-hidden z-50"
                 style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.09)", boxShadow: "0 8px 32px rgba(0,0,0,0.1)", maxHeight: 320, overflowY: "auto" }}
               >
-                {filteredDiscussions.map((d) => {
-                  const cs = getCategoryStyle(d.category);
-                  return (
-                    <Link
-                      key={d._id}
-                      to={`/discussionpage/${d._id}`}
-                      onClick={() => { setSearchQuery(""); setIsDropdownOpen(false); }}
-                      className="flex items-start gap-3 px-4 py-3 transition-colors duration-150 hover:bg-slate-50 border-b last:border-0"
-                      style={{ borderColor: "rgba(0,0,0,0.05)" }}
-                    >
-                      <div
-                        className="w-8 h-8 flex-shrink-0 rounded-lg flex items-center justify-center text-xs font-bold"
-                        style={{ background: cs.bg, color: cs.text }}
-                      >
-                        {(d.title || "D")[0].toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold truncate" style={{ color: "#1A1830" }}>
-                          {d.title || "Untitled"}
-                        </p>
-                        <p className="text-xs truncate" style={{ color: "#A09DB8" }}>
-                          {d.category || "Uncategorized"} · {d.author?.username || "Unknown"}
-                        </p>
-                      </div>
-                    </Link>
-                  );
-                })}
+                {filteredBlogs.map((blog) => (
+                  <Link
+                    key={blog._id}
+                    to={`/blogpage/${blog._id}`}
+                    onClick={() => { setSearchQuery(""); setIsDropdownOpen(false); }}
+                    className="flex items-start gap-3 px-4 py-3 transition-colors duration-150 hover:bg-slate-50 border-b last:border-0"
+                    style={{ borderColor: "rgba(0,0,0,0.05)" }}
+                  >
+                    <div className="w-8 h-8 flex-shrink-0 rounded-lg flex items-center justify-center text-xs font-bold text-white"
+                      style={{ background: "linear-gradient(135deg, #EC4899, #A855F7)" }}>
+                      {(blog.title || "B")[0].toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold truncate" style={{ color: "#1A1830" }}>{blog.title || "Untitled"}</p>
+                      <p className="text-xs truncate" style={{ color: "#A09DB8" }}>
+                        by {blog.author?.username || "Unknown"}{blog.isPrivate && " · Private"}
+                      </p>
+                    </div>
+                  </Link>
+                ))}
               </motion.div>
             )}
           </AnimatePresence>
         </motion.div>
       </section>
 
-      {/* ══ CONTENT AREA ═════════════════════════════════════════ */}
+      {/* ══ CONTENT ══════════════════════════════════════════════ */}
       <div className="px-6 pb-16 max-w-6xl mx-auto">
-
-        {/* toolbar */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-8">
           <div>
             <h2 className="text-2xl font-bold" style={{ color: "#1A1830" }}>
-              {viewMode === "following" ? "From People You Follow" : "Active Discussions"}
+              {viewMode === "following" ? "From People You Follow" : "Latest Blogs"}
             </h2>
             <p className="text-sm mt-0.5" style={{ color: "#A09DB8" }}>
-              {sortedDiscussions.length} discussion{sortedDiscussions.length !== 1 ? "s" : ""} found
+              {sortedBlogs.length} blog{sortedBlogs.length !== 1 ? "s" : ""} found
             </p>
           </div>
 
@@ -446,85 +414,57 @@ const Discussion = () => {
                 </SortBtn>
               ))}
             </div>
-
-            <div
-              className="flex items-center gap-2 pl-3 ml-1"
-              style={{ borderLeft: "1px solid rgba(0,0,0,0.08)" }}
-            >
-              <button
-                onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
-                disabled={currentPage === 0}
+            <div className="flex items-center gap-2 pl-3 ml-1" style={{ borderLeft: "1px solid rgba(0,0,0,0.08)" }}>
+              <button onClick={() => setCurrentPage(p => Math.max(0, p - 1))} disabled={currentPage === 0}
                 className="w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 disabled:opacity-30"
-                style={{ background: "rgba(0,0,0,0.04)", border: "1px solid rgba(0,0,0,0.07)" }}
-              >
+                style={{ background: "rgba(0,0,0,0.04)", border: "1px solid rgba(0,0,0,0.07)" }}>
                 <ArrowLeftIcon className="h-4 w-4" style={{ color: "#5E5A74" }} />
               </button>
               <span className="text-sm font-medium tabular-nums" style={{ color: "#5E5A74", minWidth: 60, textAlign: "center" }}>
                 {currentPage + 1} / {totalPages || 1}
               </span>
-              <button
-                onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
-                disabled={currentPage >= totalPages - 1 || totalPages === 0}
+              <button onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))} disabled={currentPage >= totalPages - 1 || totalPages === 0}
                 className="w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 disabled:opacity-30"
-                style={{ background: "rgba(0,0,0,0.04)", border: "1px solid rgba(0,0,0,0.07)" }}
-              >
+                style={{ background: "rgba(0,0,0,0.04)", border: "1px solid rgba(0,0,0,0.07)" }}>
                 <ArrowRightIcon className="h-4 w-4" style={{ color: "#5E5A74" }} />
               </button>
             </div>
           </div>
         </div>
 
-        {/* content */}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-24 gap-4">
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 0.9, repeat: Infinity, ease: "linear" }}
+            <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.9, repeat: Infinity, ease: "linear" }}
               className="w-10 h-10 rounded-full border-2 border-t-transparent"
-              style={{ borderColor: "rgba(16,185,129,0.2)", borderTopColor: "#10B981" }}
-            />
-            <p className="text-sm" style={{ color: "#A09DB8" }}>Loading discussions…</p>
+              style={{ borderColor: "rgba(236,72,153,0.2)", borderTopColor: "#EC4899" }} />
+            <p className="text-sm" style={{ color: "#A09DB8" }}>Loading blogs…</p>
           </div>
-        ) : sortedDiscussions.length === 0 ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex flex-col items-center justify-center py-24 gap-4"
-          >
-            <div
-              className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-2"
-              style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.15)" }}
-            >
-              💬
-            </div>
-            <p className="text-lg font-bold" style={{ color: "#1A1830" }}>No discussions yet</p>
-            <p className="text-sm" style={{ color: "#A09DB8" }}>Be the first to start a conversation!</p>
-            <Link
-              to="/createDiscussion"
-              className="mt-2 px-6 py-2.5 rounded-xl font-bold text-sm"
-              style={{ background: "linear-gradient(135deg, #10B981, #3B82F6)", color: "#fff" }}
-            >
-              Start a Discussion →
+        ) : sortedBlogs.length === 0 ? (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center py-24 gap-4">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-2"
+              style={{ background: "rgba(236,72,153,0.06)", border: "1px solid rgba(236,72,153,0.15)" }}>✍️</div>
+            <p className="text-lg font-bold" style={{ color: "#1A1830" }}>No blogs yet</p>
+            <p className="text-sm" style={{ color: "#A09DB8" }}>Be the first to share your story!</p>
+            <Link to="/createblog" className="mt-2 px-6 py-2.5 rounded-xl font-bold text-sm"
+              style={{ background: "linear-gradient(135deg, #EC4899, #A855F7)", color: "#fff" }}>
+              Write a Blog →
             </Link>
           </motion.div>
         ) : (
           <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-            {paginatedDiscussions.map((discussion, index) => (
-              <DiscussionCard key={discussion._id} discussion={discussion} index={index} />
+            {paginatedBlogs.map((blog, index) => (
+              <BlogCard key={blog._id} blog={blog} index={index} navigate={navigate} />
             ))}
           </div>
         )}
       </div>
 
-      {/* ══ FOOTER ═══════════════════════════════════════════════ */}
-      <footer
-        className="py-8 px-6 text-center text-xs"
-        style={{ borderTop: "1px solid rgba(0,0,0,0.06)", color: "#C4C0D8", background: "#fff" }}
-      >
+      <footer className="py-8 px-6 text-center text-xs"
+        style={{ borderTop: "1px solid rgba(0,0,0,0.06)", color: "#C4C0D8", background: "#fff" }}>
         © {new Date().getFullYear()} Debatify. Built for thinkers, arguers, and curious minds.
       </footer>
     </div>
   );
 };
 
-export default Discussion;
+export default Blog;
