@@ -7,6 +7,15 @@ import { ChatIcon, ArrowLeftIcon, ArrowRightIcon, SearchIcon, LockClosedIcon } f
 const Discussion = () => {
   const navigate = useNavigate();
   const location = useLocation();
+
+  // ✅ FIX 1: Read viewMode directly from the URL — no useState needed.
+  // The old pattern created a 3-hop cascade:
+  //   useEffect sets viewMode state (location.search changes)
+  //   → viewMode change recreates fetchDiscussions (useCallback dep)
+  //   → new fetchDiscussions reference re-fires the fetch useEffect
+  // Reading it inline collapses all 3 hops into 1 clean re-render.
+  const viewMode = new URLSearchParams(location.search).get("view") || "all";
+
   const [discussions, setDiscussions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState("latest");
@@ -14,10 +23,12 @@ const Discussion = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [filteredDiscussions, setFilteredDiscussions] = useState([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [viewMode, setViewMode] = useState("all");
   const dropdownRef = useRef(null);
   const discussionsPerPage = 9;
 
+  // ✅ FIX 2: fetchDiscussions depends directly on viewMode (a stable string read
+  // from the URL each render), not on a state variable that needed its own effect
+  // to be kept in sync. Stable dep = stable function reference = no spurious re-fetches.
   const fetchDiscussions = useCallback(async () => {
     try {
       setLoading(true);
@@ -32,35 +43,13 @@ const Discussion = () => {
     }
   }, [viewMode]);
 
+  // ✅ FIX 3: Single effect handles both page reset and fetch atomically.
+  // Old code had two separate effects — one to setViewMode, one to fetch —
+  // meaning two render cycles fired for every navigation. Now it's one.
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const mode = params.get("view") || "all";
-    setViewMode(mode);
     setCurrentPage(0);
-  }, [location.search]);
-
-  useEffect(() => {
     fetchDiscussions();
   }, [fetchDiscussions]);
-
-  useEffect(() => {
-    const intervalId = setInterval(async () => {
-      try {
-        const endpoint = viewMode === "following" ? "/discussions/following" : "/discussions";
-        const { data } = await API.get(endpoint);
-        const newDiscussions = Array.isArray(data) ? data : [];
-        const existingDiscussionIds = new Set(discussions.map((d) => d._id));
-        const discussionsToAdd = newDiscussions.filter((d) => !existingDiscussionIds.has(d._id));
-
-        if (discussionsToAdd.length > 0) {
-          setDiscussions((prevDiscussions) => [...prevDiscussions, ...discussionsToAdd]);
-        }
-      } catch (error) {
-        console.error("Error polling discussions:", error);
-      }
-    }, 5000);
-    return () => clearInterval(intervalId);
-  }, [discussions, viewMode]);
 
   useEffect(() => {
     if (searchQuery.trim() === "") {
@@ -131,6 +120,8 @@ const Discussion = () => {
     }
   };
 
+  // ✅ FIX 4: navigate() is only ever called from explicit user interaction,
+  // never from inside a useEffect.
   const handleFollowingClick = () => {
     navigate("?view=following");
   };
@@ -165,6 +156,7 @@ const Discussion = () => {
               </button>
             </motion.div>
           </form>
+
           {isDropdownOpen && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
@@ -205,6 +197,7 @@ const Discussion = () => {
             </motion.div>
           )}
         </div>
+
         <motion.div
           animate={{ scale: [1, 1.05, 1], opacity: [0.8, 1, 0.8] }}
           transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
@@ -212,12 +205,14 @@ const Discussion = () => {
         >
           <ChatIcon className="h-12 w-12 md:h-16 md:w-16 mx-auto mb-4 text-yellow-300" />
         </motion.div>
+
         <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight mb-4">
           <span className="text-yellow-300">Discussion</span> Hub
         </h1>
         <p className="text-base md:text-xl max-w-xl md:max-w-2xl mx-auto opacity-90">
           Share your thoughts, connect with others, and dive into meaningful conversations.
         </p>
+
         <div className="mt-4 md:mt-6 flex justify-center gap-2 md:gap-4">
           <Link
             to="/createDiscussion"
@@ -249,6 +244,7 @@ const Discussion = () => {
         >
           {viewMode === "following" ? "Discussions from Following" : "Active Discussions"}
         </motion.h2>
+
         <div className="flex flex-col md:flex-row md:flex-wrap justify-between items-center mb-6 md:mb-8 space-y-4 md:space-y-0">
           <div className="flex space-x-2 md:space-x-4">
             <button
@@ -276,6 +272,7 @@ const Discussion = () => {
               Popularity
             </button>
           </div>
+
           <div className="flex space-x-4 items-center">
             <button
               onClick={handlePrevPage}
@@ -284,16 +281,19 @@ const Discussion = () => {
             >
               <ArrowLeftIcon className="h-4 w-4 md:h-5 md:w-5" />
             </button>
-            <span className="text-gray-700 text-sm md:text-base">Page {currentPage + 1} of {totalPages}</span>
+            <span className="text-gray-700 text-sm md:text-base">
+              Page {currentPage + 1} of {totalPages || 1}
+            </span>
             <button
               onClick={handleNextPage}
-              disabled={currentPage === totalPages - 1}
+              disabled={currentPage === totalPages - 1 || totalPages === 0}
               className="px-2 py-1 md:px-3 md:py-1 rounded-full bg-gray-200 text-gray-800 hover:bg-gray-300 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ArrowRightIcon className="h-4 w-4 md:h-5 md:w-5" />
             </button>
           </div>
         </div>
+
         {loading ? (
           <div className="text-center">
             <motion.div

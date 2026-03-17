@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, Link, useLocation } from "react-router-dom";
 import API from "../api/axiosInstance";
 import { motion } from "framer-motion";
@@ -28,34 +28,53 @@ const BlogPage = () => {
   const [voting, setVoting] = useState(false);
   const [bookmarking, setBookmarking] = useState(false);
   const [error, setError] = useState(null);
-  const [pollingError, setPollingError] = useState(null);
   const [passcode, setPasscode] = useState("");
   const [passcodeRequired, setPasscodeRequired] = useState(false);
-  const [enteredPasscode, setEnteredPasscode] = useState(null);
-  const [isPolling, setIsPolling] = useState(true);
 
-  // Validate MongoDB ObjectId format
+  // ✅ FIX: Store enteredPasscode in a ref instead of state.
+  //
+  // The original bug was a self-referencing loop:
+  //   fetchBlog (useCallback) depended on [id, enteredPasscode]
+  //   → fetchBlog itself called setEnteredPasscode() on success
+  //   → that state change recreated fetchBlog
+  //   → useEffect([fetchBlog]) re-fired
+  //   → fetchBlog ran again → infinite API calls
+  //
+  // useRef stores the value without triggering re-renders or being
+  // listed as a useCallback dependency, breaking the loop entirely.
+  const enteredPasscodeRef = useRef(null);
+
   const isValidObjectId = (id) => /^[0-9a-fA-F]{24}$/.test(id);
 
+  // ✅ fetchBlog now only depends on [id] — stable for the lifetime of the page.
+  // It reads the passcode from the ref (always current value, never stale)
+  // and writes back to the ref on success instead of calling setState.
   const fetchBlog = useCallback(
     async (enteredPasscodeParam = null) => {
       if (!isValidObjectId(id)) {
         setError("Invalid blog ID");
         setLoading(false);
-        setIsPolling(false);
         return;
       }
 
       try {
         setLoading(true);
         setError(null);
-        const passcodeToUse = enteredPasscodeParam || enteredPasscode;
+
+        // Use the passed-in param (passcode form submit) or fall back to the ref
+        const passcodeToUse = enteredPasscodeParam ?? enteredPasscodeRef.current;
         const url = passcodeToUse
           ? `/blogs/${id}?passcode=${encodeURIComponent(passcodeToUse)}`
           : `/blogs/${id}`;
+
         const { data } = await API.get(url);
         setBlog(data);
-        if (enteredPasscodeParam) setEnteredPasscode(enteredPasscodeParam);
+
+        // ✅ Write to ref — no re-render, no dep change, no loop
+        if (enteredPasscodeParam) {
+          enteredPasscodeRef.current = enteredPasscodeParam;
+        }
+
         setPasscodeRequired(false);
       } catch (error) {
         console.error("Error fetching blog:", error);
@@ -69,67 +88,13 @@ const BlogPage = () => {
         setLoading(false);
       }
     },
-    [id, enteredPasscode]
+    [id] // ✅ only re-creates when the blog ID changes (navigating to a different blog)
   );
 
+  // ✅ Runs exactly once on mount (and again only if the blog ID in the URL changes)
   useEffect(() => {
     fetchBlog();
   }, [fetchBlog]);
-
-  const pollBlog = useCallback(async () => {
-    if (!isValidObjectId(id)) {
-      setPollingError("Invalid blog ID. Polling stopped.");
-      setIsPolling(false);
-      return;
-    }
-
-    try {
-      const url = enteredPasscode
-        ? `/blogs/${id}?passcode=${encodeURIComponent(enteredPasscode)}&poll=true`
-        : `/blogs/${id}?poll=true`;
-      const { data } = await API.get(url);
-      const newBlog = data;
-
-      setBlog((prevBlog) => {
-        if (!prevBlog) return newBlog;
-        if (
-          prevBlog.upvotes !== newBlog.upvotes ||
-          prevBlog.downvotes !== newBlog.downvotes ||
-          prevBlog.views !== newBlog.views ||
-          prevBlog.bookmarkCount !== newBlog.bookmarkCount ||
-          prevBlog.isBookmarked !== newBlog.isBookmarked ||
-          JSON.stringify(prevBlog.upvotedBy) !== JSON.stringify(newBlog.upvotedBy) ||
-          JSON.stringify(prevBlog.downvotedBy) !== JSON.stringify(newBlog.downvotedBy)
-        ) {
-          return {
-            ...prevBlog,
-            upvotes: newBlog.upvotes || 0,
-            downvotes: newBlog.downvotes || 0,
-            views: newBlog.views || 0,
-            bookmarkCount: newBlog.bookmarkCount || 0,
-            isBookmarked: newBlog.isBookmarked,
-            upvotedBy: newBlog.upvotedBy || prevBlog.upvotedBy,
-            downvotedBy: newBlog.downvotedBy || prevBlog.downvotedBy,
-          };
-        }
-        return prevBlog;
-      });
-    } catch (error) {
-      console.error("Error polling blog:", error);
-      if (error.response?.status === 400) {
-        setPollingError(error.response?.data?.message || "Invalid request. Polling stopped.");
-        setIsPolling(false);
-      }
-    }
-  }, [id, enteredPasscode]);
-
-  useEffect(() => {
-    let intervalId;
-    if (isPolling) {
-      intervalId = setInterval(pollBlog, 5000);
-    }
-    return () => clearInterval(intervalId);
-  }, [pollBlog, isPolling]);
 
   const handleVote = useCallback(async (voteType) => {
     try {
@@ -268,9 +233,6 @@ const BlogPage = () => {
       {error && (
         <div className="mb-4 md:mb-6 p-3 md:p-4 bg-red-100 text-red-700 rounded-lg text-center text-sm md:text-base">{error}</div>
       )}
-      {pollingError && (
-        <div className="mb-4 md:mb-6 p-3 md:p-4 bg-red-100 text-red-700 rounded-lg text-center text-sm md:text-base">{pollingError}</div>
-      )}
       <header className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white py-8 md:py-12">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.h1
@@ -327,19 +289,8 @@ const BlogPage = () => {
                     disabled={voting}
                     className="flex items-center px-2 py-1 md:px-3 md:py-2 text-gray-700 hover:text-green-600"
                   >
-                    <svg
-                      className="h-4 w-4 md:h-5 md:w-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      xmlns="http://www.w3.org/2000/svg"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M5 15l7-7 7 7"
-                      />
+                    <svg className="h-4 w-4 md:h-5 md:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
                     </svg>
                   </button>
                   <span className="px-1 md:px-2 text-gray-800 font-medium">
@@ -350,19 +301,8 @@ const BlogPage = () => {
                     disabled={voting}
                     className="flex items-center px-2 py-1 md:px-3 md:py-2 text-gray-700 hover:text-red-600"
                   >
-                    <svg
-                      className="h-4 w-4 md:h-5 md:w-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      xmlns="http://www.w3.org/2000/svg"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M19 9l-7 7-7-7"
-                      />
+                    <svg className="h-4 w-4 md:h-5 md:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
                 </motion.div>
@@ -380,19 +320,8 @@ const BlogPage = () => {
                     disabled={bookmarking}
                     className="flex items-center px-2 py-1 md:px-3 md:py-2"
                   >
-                    <svg
-                      className="h-4 w-4 md:h-5 md:w-5 mr-1 md:mr-2"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      xmlns="http://www.w3.org/2000/svg"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-5-7 5V5z"
-                      />
+                    <svg className="h-4 w-4 md:h-5 md:w-5 mr-1 md:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-5-7 5V5z" />
                     </svg>
                     <span>{blog.bookmarkCount || 0}</span>
                   </button>

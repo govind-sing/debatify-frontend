@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import API from "../api/axiosInstance";
@@ -7,17 +7,23 @@ import { FireIcon, ArrowLeftIcon, ArrowRightIcon, SearchIcon, LockClosedIcon } f
 const Debate = () => {
   const navigate = useNavigate();
   const location = useLocation();
+
+  // ✅ FIX 1: Read viewMode directly from the URL — no useState needed.
+  // Old: useEffect sets viewMode state → viewMode recreates fetchDebates (useCallback dep)
+  // → fetchDebates change re-fires fetch useEffect = 3 render hops per navigation.
+  const viewMode = new URLSearchParams(location.search).get("view") || "all";
+
   const [debates, setDebates] = useState([]);
-  const [filteredDebates, setFilteredDebates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState("latest");
   const [currentPage, setCurrentPage] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [viewMode, setViewMode] = useState("all");
   const dropdownRef = useRef(null);
   const debatesPerPage = 9;
 
+  // ✅ fetchDebates depends directly on viewMode (a stable string from the URL),
+  // not on a state variable that needed its own effect to stay in sync.
   const fetchDebates = useCallback(async () => {
     try {
       setLoading(true);
@@ -32,46 +38,20 @@ const Debate = () => {
     }
   }, [viewMode]);
 
+  // ✅ Fetch + page reset happen together in one effect. Runs only when viewMode changes.
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const mode = params.get("view") || "all";
-    setViewMode(mode);
     setCurrentPage(0);
-  }, [location.search]);
-
-  useEffect(() => {
     fetchDebates();
   }, [fetchDebates]);
 
-  useEffect(() => {
-    const intervalId = setInterval(async () => {
-      try {
-        const endpoint = viewMode === "following" ? "/debates/following" : "/debates";
-        const { data } = await API.get(endpoint);
-        const newDebates = Array.isArray(data) ? data : [];
-        const existingDebateIds = new Set(debates.map((d) => d._id));
-        const debatesToAdd = newDebates.filter((d) => !existingDebateIds.has(d._id));
-
-        if (debatesToAdd.length > 0) {
-          setDebates((prevDebates) => [...prevDebates, ...debatesToAdd]);
-        }
-      } catch (error) {
-        console.error("Error polling debates:", error);
-      }
-    }, 5000);
-    return () => clearInterval(intervalId);
-  }, [debates, viewMode]);
-
-  useEffect(() => {
-    if (searchQuery.trim() === "") {
-      setFilteredDebates(debates);
-      setIsDropdownOpen(false);
-      setCurrentPage(0);
-      return;
-    }
-
+  // ✅ FIX 2: Replace the filter useEffect with useMemo.
+  // Old: a useEffect watching [searchQuery, debates] called setFilteredDebates on every
+  // keystroke — an unnecessary extra render cycle per keystroke.
+  // useMemo computes the filtered list as a plain derived value during render — zero extra renders.
+  const filteredDebates = useMemo(() => {
+    if (searchQuery.trim() === "") return debates;
     const lowerQuery = searchQuery.toLowerCase();
-    const results = debates.filter((debate) => {
+    return debates.filter((debate) => {
       const title = debate.title || "";
       const openingArgument = debate.openingArgument || "";
       const category = debate.category || "";
@@ -83,11 +63,32 @@ const Debate = () => {
         username.toLowerCase().includes(lowerQuery)
       );
     });
-
-    setFilteredDebates(results);
-    setIsDropdownOpen(results.length > 0);
-    setCurrentPage(0);
   }, [searchQuery, debates]);
+
+  // ✅ FIX 3: sortedDebates as useMemo — pure computation, not a side effect.
+  const sortedDebates = useMemo(() => {
+    return [...filteredDebates].sort((a, b) => {
+      if (sortBy === "latest") return new Date(b.createdAt) - new Date(a.createdAt);
+      if (sortBy === "oldest") return new Date(a.createdAt) - new Date(b.createdAt);
+      if (sortBy === "popularity") {
+        const popularityA = (a.comments?.length || 0) + (a.upvotes || 0) + (a.downvotes || 0);
+        const popularityB = (b.comments?.length || 0) + (b.upvotes || 0) + (b.downvotes || 0);
+        return popularityB - popularityA;
+      }
+      return 0;
+    });
+  }, [filteredDebates, sortBy]);
+
+  // ✅ Dropdown visibility derived inline — no effect needed.
+  const showDropdown = isDropdownOpen && filteredDebates.length > 0 && searchQuery.trim() !== "";
+
+  useEffect(() => {
+    if (searchQuery.trim() === "") {
+      setIsDropdownOpen(false);
+    } else {
+      setIsDropdownOpen(filteredDebates.length > 0);
+    }
+  }, [searchQuery, filteredDebates]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -98,17 +99,6 @@ const Debate = () => {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
-  const sortedDebates = [...filteredDebates].sort((a, b) => {
-    if (sortBy === "latest") return new Date(b.createdAt) - new Date(a.createdAt);
-    if (sortBy === "oldest") return new Date(a.createdAt) - new Date(b.createdAt);
-    if (sortBy === "popularity") {
-      const popularityA = (a.comments?.length || 0) + (a.upvotes || 0) + (a.downvotes || 0);
-      const popularityB = (b.comments?.length || 0) + (b.upvotes || 0) + (b.downvotes || 0);
-      return popularityB - popularityA;
-    }
-    return 0;
-  });
 
   const totalPages = Math.ceil(sortedDebates.length / debatesPerPage);
   const paginatedDebates = sortedDebates.slice(
@@ -133,6 +123,7 @@ const Debate = () => {
     }
   };
 
+  // ✅ navigate() only called from user interaction, never from a useEffect.
   const handleFollowingClick = () => {
     navigate("?view=following");
   };
@@ -167,7 +158,8 @@ const Debate = () => {
               </button>
             </motion.div>
           </form>
-          {isDropdownOpen && (
+
+          {showDropdown && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -207,6 +199,7 @@ const Debate = () => {
             </motion.div>
           )}
         </div>
+
         <motion.div
           animate={{ scale: [1, 1.05, 1], opacity: [0.8, 1, 0.8] }}
           transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
@@ -214,12 +207,14 @@ const Debate = () => {
         >
           <FireIcon className="h-12 w-12 md:h-16 md:w-16 mx-auto mb-4 text-orange-300" />
         </motion.div>
+
         <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight mb-4">
           <span className="text-orange-300">Debate</span> Hub
         </h1>
         <p className="text-base md:text-xl max-w-xl mx-auto opacity-90">
           Ignite your passion, challenge perspectives, and dive into thrilling debates.
         </p>
+
         <div className="mt-4 md:mt-6 space-x-4">
           <Link
             to="/CreateDebate"
@@ -241,6 +236,7 @@ const Debate = () => {
           </button>
         </div>
       </motion.div>
+
       <div className="p-4 md:p-10 max-w-6xl mx-auto">
         <motion.h2
           initial={{ opacity: 0, y: 20 }}
@@ -250,6 +246,7 @@ const Debate = () => {
         >
           {viewMode === "following" ? "Debates from Following" : "Active Debates"}
         </motion.h2>
+
         <div className="flex flex-col md:flex-row md:flex-wrap justify-between items-center mb-6 md:mb-8 space-y-4 md:space-y-0">
           <div className="flex space-x-2 md:space-x-4">
             <button
@@ -283,6 +280,7 @@ const Debate = () => {
               Popularity
             </button>
           </div>
+
           <div className="flex space-x-4 items-center">
             <button
               onClick={handlePrevPage}
@@ -292,17 +290,18 @@ const Debate = () => {
               <ArrowLeftIcon className="h-4 w-4 md:h-5 md:w-5" />
             </button>
             <span className="text-gray-700 text-sm md:text-base">
-              Page {currentPage + 1} of {totalPages}
+              Page {currentPage + 1} of {totalPages || 1}
             </span>
             <button
               onClick={handleNextPage}
-              disabled={currentPage === totalPages - 1}
+              disabled={currentPage === totalPages - 1 || totalPages === 0}
               className="px-2 py-1 md:px-3 md:py-1 rounded-full bg-gray-200 text-gray-800 hover:bg-gray-300 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ArrowRightIcon className="h-4 w-4 md:h-5 md:w-5" />
             </button>
           </div>
         </div>
+
         {loading ? (
           <div className="text-center">
             <motion.div

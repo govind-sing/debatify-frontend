@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import API from "../api/axiosInstance";
@@ -7,17 +7,23 @@ import { PencilIcon, ArrowLeftIcon, ArrowRightIcon, SearchIcon, LockClosedIcon }
 const Blog = () => {
   const navigate = useNavigate();
   const location = useLocation();
+
+  // ✅ FIX 1: Read viewMode directly from URL — no useState needed.
+  // Old pattern: useEffect sets viewMode state → viewMode change recreates fetchBlogs
+  // → fetchBlogs change re-fires fetch useEffect = 3 render hops for a URL read.
+  const viewMode = new URLSearchParams(location.search).get("view") || "all";
+
   const [blogs, setBlogs] = useState([]);
-  const [filteredBlogs, setFilteredBlogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState("latest");
   const [currentPage, setCurrentPage] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [viewMode, setViewMode] = useState("all");
   const dropdownRef = useRef(null);
   const blogsPerPage = 9;
 
+  // ✅ FIX 2: fetchBlogs depends directly on viewMode (a string, not a state variable).
+  // Stable and only recreates when the URL view param actually changes.
   const fetchBlogs = useCallback(async () => {
     try {
       setLoading(true);
@@ -32,45 +38,20 @@ const Blog = () => {
     }
   }, [viewMode]);
 
+  // ✅ Fetch + page reset happen together when viewMode changes. One effect, one hop.
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const mode = params.get("view") || "all";
-    setViewMode(mode);
     setCurrentPage(0);
-  }, [location.search]);
-
-  useEffect(() => {
     fetchBlogs();
   }, [fetchBlogs]);
 
-  useEffect(() => {
-    const intervalId = setInterval(async () => {
-      try {
-        const endpoint = viewMode === "following" ? "/blogs/following" : "/blogs";
-        const { data } = await API.get(endpoint);
-        const newBlogs = Array.isArray(data) ? data : [];
-        const existingBlogIds = new Set(blogs.map((d) => d._id));
-        const blogsToAdd = newBlogs.filter((d) => !existingBlogIds.has(d._id));
-        if (blogsToAdd.length > 0) {
-          setBlogs((prevBlogs) => [...prevBlogs, ...blogsToAdd]);
-        }
-      } catch (error) {
-        console.error("Error polling blogs:", error);
-      }
-    }, 5000);
-    return () => clearInterval(intervalId);
-  }, [blogs, viewMode]);
-
-  const filterBlogs = useCallback(() => {
-    if (searchQuery.trim() === "") {
-      setFilteredBlogs(blogs);
-      setIsDropdownOpen(false);
-      setCurrentPage(0);
-      return;
-    }
-
+  // ✅ FIX 3: Replace the useCallback + useEffect pattern for filtering with useMemo.
+  // Old pattern: filterBlogs useCallback (deps: searchQuery, blogs) → useEffect calls it
+  // → every keystroke caused an extra render cycle. useMemo computes inline with zero
+  // extra renders — it's just a derived value, not a side effect.
+  const filteredBlogs = useMemo(() => {
+    if (searchQuery.trim() === "") return blogs;
     const lowerQuery = searchQuery.toLowerCase();
-    const results = blogs.filter((blog) => {
+    return blogs.filter((blog) => {
       const title = blog.title || "";
       const content = blog.content || "";
       const username = blog.author?.username || "";
@@ -80,15 +61,18 @@ const Blog = () => {
         username.toLowerCase().includes(lowerQuery)
       );
     });
-
-    setFilteredBlogs(results);
-    setIsDropdownOpen(results.length > 0);
-    setCurrentPage(0);
   }, [searchQuery, blogs]);
 
+  // ✅ Dropdown open state derived from filteredBlogs — also inline, no effect needed.
+  const showDropdown = isDropdownOpen && filteredBlogs.length > 0 && searchQuery.trim() !== "";
+
   useEffect(() => {
-    filterBlogs();
-  }, [filterBlogs]);
+    if (searchQuery.trim() === "") {
+      setIsDropdownOpen(false);
+    } else {
+      setIsDropdownOpen(filteredBlogs.length > 0);
+    }
+  }, [searchQuery, filteredBlogs]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -100,37 +84,40 @@ const Blog = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const sortedBlogs = [...filteredBlogs].sort((a, b) => {
-    if (sortBy === "latest") return new Date(b.createdAt) - new Date(a.createdAt);
-    if (sortBy === "oldest") return new Date(a.createdAt) - new Date(b.createdAt);
-    if (sortBy === "popularity") {
-      const popularityA = (a.upvotes || 0) + (a.downvotes || 0);
-      const popularityB = (b.upvotes || 0) + (b.downvotes || 0);
-      return popularityB - popularityA;
-    }
-    return 0;
-  });
+  const sortedBlogs = useMemo(() => {
+    return [...filteredBlogs].sort((a, b) => {
+      if (sortBy === "latest") return new Date(b.createdAt) - new Date(a.createdAt);
+      if (sortBy === "oldest") return new Date(a.createdAt) - new Date(b.createdAt);
+      if (sortBy === "popularity") {
+        const popularityA = (a.upvotes || 0) + (a.downvotes || 0);
+        const popularityB = (b.upvotes || 0) + (b.downvotes || 0);
+        return popularityB - popularityA;
+      }
+      return 0;
+    });
+  }, [filteredBlogs, sortBy]);
 
   const totalPages = Math.ceil(sortedBlogs.length / blogsPerPage);
   const paginatedBlogs = sortedBlogs.slice(currentPage * blogsPerPage, (currentPage + 1) * blogsPerPage);
 
-  const handlePrevPage = useCallback(() => {
+  const handlePrevPage = () => {
     if (currentPage > 0) setCurrentPage((prev) => prev - 1);
-  }, [currentPage]);
+  };
 
-  const handleNextPage = useCallback(() => {
+  const handleNextPage = () => {
     if (currentPage < totalPages - 1) setCurrentPage((prev) => prev + 1);
-  }, [currentPage, totalPages]);
+  };
 
-  const handleSearchSubmit = useCallback((e) => {
+  const handleSearchSubmit = (e) => {
     e.preventDefault();
     if (filteredBlogs.length > 0) {
       navigate(`/blogs/${filteredBlogs[0]._id}`);
       setSearchQuery("");
       setIsDropdownOpen(false);
     }
-  }, [filteredBlogs, navigate]);
+  };
 
+  // ✅ navigate() only called from user interaction, never from a useEffect.
   const handleFollowingClick = () => {
     navigate("?view=following");
   };
@@ -165,7 +152,8 @@ const Blog = () => {
               </button>
             </motion.div>
           </form>
-          {isDropdownOpen && (
+
+          {showDropdown && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -198,6 +186,7 @@ const Blog = () => {
             </motion.div>
           )}
         </div>
+
         <motion.div
           animate={{ scale: [1, 1.05, 1], opacity: [0.8, 1, 0.8] }}
           transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
@@ -205,12 +194,14 @@ const Blog = () => {
         >
           <PencilIcon className="h-12 w-12 md:h-16 md:w-16 mx-auto mb-4 text-yellow-300" />
         </motion.div>
+
         <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight mb-4">
           <span className="text-yellow-300">Blog</span> Hub
         </h1>
         <p className="text-base md:text-xl max-w-xl mx-auto opacity-90">
           Share your thoughts, inspire others, and explore a world of ideas.
         </p>
+
         <div className="mt-4 md:mt-6 space-x-4">
           <Link
             to="/createblog"
@@ -232,6 +223,7 @@ const Blog = () => {
           </button>
         </div>
       </motion.div>
+
       <div className="p-4 md:p-10 max-w-6xl mx-auto md:ml-64">
         <motion.h2
           initial={{ opacity: 0, y: 20 }}
@@ -241,6 +233,7 @@ const Blog = () => {
         >
           {viewMode === "following" ? "Blogs from Following" : "Latest Blogs"}
         </motion.h2>
+
         <div className="flex flex-col md:flex-row md:flex-wrap justify-between items-center mb-6 md:mb-8 space-y-4 md:space-y-0">
           <div className="flex space-x-2 md:space-x-4">
             <button
@@ -268,6 +261,7 @@ const Blog = () => {
               Popularity
             </button>
           </div>
+
           <div className="flex space-x-4 items-center">
             <button
               onClick={handlePrevPage}
@@ -276,16 +270,19 @@ const Blog = () => {
             >
               <ArrowLeftIcon className="h-4 w-4 md:h-5 md:w-5" />
             </button>
-            <span className="text-gray-700 text-sm md:text-base">Page {currentPage + 1} of {totalPages}</span>
+            <span className="text-gray-700 text-sm md:text-base">
+              Page {currentPage + 1} of {totalPages || 1}
+            </span>
             <button
               onClick={handleNextPage}
-              disabled={currentPage === totalPages - 1}
+              disabled={currentPage === totalPages - 1 || totalPages === 0}
               className="px-2 py-1 md:px-3 md:py-1 rounded-full bg-gray-200 text-gray-800 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ArrowRightIcon className="h-4 w-4 md:h-5 md:w-5" />
             </button>
           </div>
         </div>
+
         {loading ? (
           <div className="text-center">
             <motion.div
@@ -320,7 +317,6 @@ const Blog = () => {
                 whileHover={{ scale: 1.03 }}
                 className="relative group bg-white rounded-xl shadow-lg overflow-hidden"
               >
-                {/* Blog card content without wrapping Link */}
                 <div className="p-4 md:p-6 relative z-10">
                   <Link to={`/blogpage/${blog._id}`}>
                     <h3 className="text-lg md:text-xl font-semibold text-gray-800 group-hover:text-white">
@@ -367,7 +363,7 @@ const Blog = () => {
                     </span>
                   </div>
                 </div>
-                {/* Overlay for hover effect, linked to blog page */}
+
                 <Link
                   to={`/blogpage/${blog._id}`}
                   className="absolute inset-0 bg-gradient-to-t from-blue-500/80 to-transparent opacity-0 group-hover:opacity-100"

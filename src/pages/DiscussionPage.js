@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useParams, Link, useLocation } from "react-router-dom";
 import API from "../api/axiosInstance";
 import { motion } from "framer-motion";
@@ -10,56 +10,73 @@ const DiscussionPage = () => {
   const [originalComments, setOriginalComments] = useState([]);
   const [comment, setComment] = useState("");
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [voting, setVoting] = useState(false);
   const [commenting, setCommenting] = useState(false);
   const [isBookmarking, setIsBookmarking] = useState(false);
   const [error, setError] = useState(null);
-  const [pollingError, setPollingError] = useState(null);
   const [passcode, setPasscode] = useState("");
   const [passcodeRequired, setPasscodeRequired] = useState(false);
-  const [enteredPasscode, setEnteredPasscode] = useState(null);
   const [sortBy, setSortBy] = useState("latest");
-  const [userId, setUserId] = useState(null);
-  const [isPolling, setIsPolling] = useState(true);
 
-  // Validate MongoDB ObjectId format
-  const isValidObjectId = (id) => /^[0-9a-fA-F]{24}$/.test(id);
+  // ✅ FIX 1: enteredPasscode as ref — not state.
+  // Original bug: fetchDiscussion depended on [id, enteredPasscode] and called
+  // setEnteredPasscode() inside itself → state change → useCallback recreated
+  // → useEffect([fetchDiscussion]) re-fired → extra API call every passcode entry.
+  const enteredPasscodeRef = useRef(null);
 
-  // Extract userId from JWT token
+  // ✅ FIX 2: userId as ref — not state.
+  // Original bug: useEffect set userId state once → state change recreated
+  // fetchDiscussion (it was a dep) → useEffect([fetchDiscussion]) re-fired
+  // → a second fetch on every single page load.
+  const userIdRef = useRef(null);
+
+  // ✅ Decode userId once on mount into a ref — no re-render, no dep chain.
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (token && typeof token === "string" && token.split(".").length === 3) {
       try {
         const payload = atob(token.split(".")[1]);
         const parsedPayload = JSON.parse(payload);
-        setUserId(parsedPayload?.userId || null);
+        userIdRef.current = parsedPayload?.userId || null;
       } catch (e) {
         console.error("Error decoding token:", e);
-        setUserId(null);
+        userIdRef.current = null;
       }
     }
-  }, []);
+  }, []); // runs exactly once
 
+  const isValidObjectId = (id) => /^[0-9a-fA-F]{24}$/.test(id);
+
+  // ✅ FIX 3: fetchDiscussion now depends only on [id].
+  // Reads passcode from ref (always current, never stale, never a dep).
+  // isRefresh flag shows a lightweight spinner instead of the full loading state.
   const fetchDiscussion = useCallback(
-    async (enteredPasscodeParam = null) => {
+    async (enteredPasscodeParam = null, isRefresh = false) => {
       if (!isValidObjectId(id)) {
         setError("Invalid discussion ID");
         setLoading(false);
-        setIsPolling(false);
         return;
       }
 
       try {
-        setLoading(true);
+        isRefresh ? setRefreshing(true) : setLoading(true);
         setError(null);
-        const passcodeToUse = enteredPasscodeParam || enteredPasscode;
+
+        const passcodeToUse = enteredPasscodeParam ?? enteredPasscodeRef.current;
         const url = passcodeToUse
           ? `/discussions/${id}?passcode=${encodeURIComponent(passcodeToUse)}`
           : `/discussions/${id}`;
+
         const { data } = await API.get(url);
         setDiscussion(data);
         setOriginalComments(data.comments || []);
-        if (enteredPasscodeParam) setEnteredPasscode(enteredPasscodeParam);
+
+        // ✅ Write to ref — no re-render, no dep change, no loop
+        if (enteredPasscodeParam) {
+          enteredPasscodeRef.current = enteredPasscodeParam;
+        }
+
         setPasscodeRequired(false);
       } catch (err) {
         console.error("Fetch error:", err.response?.data || err.message);
@@ -71,90 +88,21 @@ const DiscussionPage = () => {
         }
       } finally {
         setLoading(false);
+        setRefreshing(false);
       }
     },
-    [id, enteredPasscode]
+    [id] // ✅ only recreates when navigating to a different discussion
   );
 
+  // ✅ Runs exactly once on mount (and again only if the discussion ID changes)
   useEffect(() => {
     fetchDiscussion();
   }, [fetchDiscussion]);
 
-  useEffect(() => {
-    if (!isValidObjectId(id)) {
-      setPollingError("Invalid discussion ID. Polling stopped.");
-      setIsPolling(false);
-      return;
-    }
-
-    const pollDiscussion = async () => {
-      try {
-        const url = enteredPasscode
-          ? `/discussions/${id}?passcode=${encodeURIComponent(enteredPasscode)}&poll=true`
-          : `/discussions/${id}?poll=true`;
-        const { data } = await API.get(url);
-        const newDiscussion = data;
-
-        setDiscussion((prev) => {
-          if (
-            prev.upvotes !== newDiscussion.upvotes ||
-            prev.downvotes !== newDiscussion.downvotes ||
-            prev.bookmarkCount !== newDiscussion.bookmarkCount ||
-            prev.isBookmarked !== newDiscussion.isBookmarked ||
-            prev.views !== newDiscussion.views ||
-            JSON.stringify(prev.upvotedBy) !== JSON.stringify(newDiscussion.upvotedBy) ||
-            JSON.stringify(prev.downvotedBy) !== JSON.stringify(newDiscussion.downvotedBy)
-          ) {
-            return {
-              ...prev,
-              upvotes: newDiscussion.upvotes || 0,
-              downvotes: newDiscussion.downvotes || 0,
-              bookmarkCount: newDiscussion.bookmarkCount || 0,
-              isBookmarked: newDiscussion.isBookmarked,
-              views: newDiscussion.views || 0,
-              upvotedBy: newDiscussion.upvotedBy || prev.upvotedBy,
-              downvotedBy: newDiscussion.downvotedBy || prev.downvotedBy,
-            };
-          }
-          return prev;
-        });
-
-        const newComments = newDiscussion.comments || [];
-        const existingCommentIds = new Set(originalComments.map((c) => c._id));
-        const commentsToAdd = newComments.filter((c) => !existingCommentIds.has(c._id));
-        if (commentsToAdd.length > 0) {
-          setOriginalComments((prevComments) => [...prevComments, ...commentsToAdd]);
-        }
-
-        setOriginalComments((prevComments) =>
-          prevComments.map((prevComment) => {
-            const updatedComment = newComments.find((c) => c._id === prevComment._id);
-            if (
-              updatedComment &&
-              (prevComment.likes !== updatedComment.likes ||
-                JSON.stringify(prevComment.likedBy) !== JSON.stringify(updatedComment.likedBy))
-            ) {
-              return { ...prevComment, likes: updatedComment.likes, likedBy: updatedComment.likedBy };
-            }
-            return prevComment;
-          })
-        );
-      } catch (error) {
-        console.error("Error polling discussion:", error);
-        if (error.response?.status === 400) {
-          setPollingError(error.response?.data?.message || "Invalid request. Polling stopped.");
-          setIsPolling(false);
-        }
-      }
-    };
-
-    let intervalId;
-    if (isPolling) {
-      intervalId = setInterval(pollDiscussion, 2000);
-    }
-
-    return () => clearInterval(intervalId);
-  }, [id, originalComments, enteredPasscode, isPolling]);
+  // ✅ Refresh handler — lightweight refresh without resetting the whole page
+  const handleRefresh = () => {
+    fetchDiscussion(null, true);
+  };
 
   const sortedComments = useMemo(() => {
     const commentsCopy = [...originalComments];
@@ -178,10 +126,8 @@ const DiscussionPage = () => {
       setError(null);
       const token = localStorage.getItem("token");
       if (!token) return setError("You must be logged in to vote.");
-
       const endpoint = voteType === "upvote" ? `/discussions/${id}/upvote` : `/discussions/${id}/downvote`;
       const { data } = await API.post(endpoint, {}, { headers: { Authorization: `Bearer ${token}` } });
-
       setDiscussion((prev) => ({
         ...prev,
         upvotes: data.upvotes || 0,
@@ -202,12 +148,8 @@ const DiscussionPage = () => {
       setIsBookmarking(true);
       setError(null);
       const token = localStorage.getItem("token");
-      if (!token) {
-        setError("You must be logged in to bookmark.");
-        return;
-      }
+      if (!token) { setError("You must be logged in to bookmark."); return; }
       const { data } = await API.post(`/discussions/${id}/bookmark`, {}, { headers: { Authorization: `Bearer ${token}` } });
-
       setDiscussion((prev) => ({
         ...prev,
         bookmarkCount: data.bookmarkCount,
@@ -228,13 +170,11 @@ const DiscussionPage = () => {
       const token = localStorage.getItem("token");
       if (!token) return setError("You must be logged in to comment.");
       if (!comment.trim()) return setError("Comment cannot be empty.");
-
       const { data } = await API.post(
         `/discussions/${id}/comment`,
         { text: comment },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-
       const newComment = data.comments[data.comments.length - 1];
       setOriginalComments((prevComments) => [...prevComments, newComment]);
       setComment("");
@@ -251,13 +191,11 @@ const DiscussionPage = () => {
       setError(null);
       const token = localStorage.getItem("token");
       if (!token) return setError("You must be logged in to like a comment.");
-
       const { data } = await API.post(
         `/discussions/${id}/comment/${commentId}/like`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
-
       setOriginalComments((prev) =>
         prev.map((c) => (c._id === commentId ? { ...c, likes: data.likes, likedBy: data.likedBy } : c))
       );
@@ -269,17 +207,12 @@ const DiscussionPage = () => {
 
   if (loading)
     return <p className="text-center mt-5 md:mt-10 text-gray-600 text-base md:text-lg">Loading discussion...</p>;
-  if (!discussion && !passcodeRequired)
-    return <p className="text-center mt-5 md:mt-10 text-red-500 text-base md:text-lg">Discussion not found.</p>;
 
   if (passcodeRequired) {
     return (
       <div className="min-h-screen flex flex-col justify-center items-center bg-gradient-to-r from-blue-50 to-purple-50 p-4 md:p-5 md:ml-64">
         <h2 className="text-xl md:text-2xl font-bold mb-4 text-gray-800">This is a Private Discussion</h2>
-        <form
-          onSubmit={handlePasscodeSubmit}
-          className="bg-white shadow-lg rounded-lg p-4 md:p-6 w-full max-w-md"
-        >
+        <form onSubmit={handlePasscodeSubmit} className="bg-white shadow-lg rounded-lg p-4 md:p-6 w-full max-w-md">
           <label className="block mb-2 text-gray-700 text-sm md:text-base">Enter Passcode:</label>
           <input
             type="password"
@@ -300,16 +233,14 @@ const DiscussionPage = () => {
     );
   }
 
+  if (!discussion)
+    return <p className="text-center mt-5 md:mt-10 text-red-500 text-base md:text-lg">Discussion not found.</p>;
+
   return (
     <div className="min-h-screen bg-gradient-to-r from-blue-50 to-purple-50 p-4 md:p-5 md:ml-64">
       {error && (
         <div className="mb-4 p-2 md:p-3 bg-red-100 text-red-700 rounded-md text-center text-sm md:text-base">
           {error}
-        </div>
-      )}
-      {pollingError && (
-        <div className="mb-4 p-2 md:p-3 bg-red-100 text-red-700 rounded-md text-center text-sm md:text-base">
-          {pollingError}
         </div>
       )}
 
@@ -319,10 +250,7 @@ const DiscussionPage = () => {
           <p className="text-gray-600 mb-4 text-sm md:text-base">{discussion.description}</p>
           <p className="text-xs md:text-sm text-blue-600 mb-4">
             Category: <span className="font-semibold">{discussion.category}</span> | By:{" "}
-            <Link
-              to={`/profile/${discussion.author?.username || "unknown"}`}
-              className="font-semibold hover:underline"
-            >
+            <Link to={`/profile/${discussion.author?.username || "unknown"}`} className="font-semibold hover:underline">
               {discussion.author?.username || "Unknown"}
             </Link>{" "}
             | Created:{" "}
@@ -333,87 +261,36 @@ const DiscussionPage = () => {
           </p>
 
           <div className="flex flex-col sm:flex-row sm:space-x-4 mb-4 md:mb-6 space-y-2 sm:space-y-0">
-            {/* Upvote/Downvote Button */}
+            {/* Upvote/Downvote */}
             <motion.div
-              className={`flex items-center rounded-full bg-gray-100 shadow-sm text-sm md:text-base ${
-                voting ? "opacity-50 cursor-not-allowed" : "hover:bg-gray-200"
-              }`}
+              className={`flex items-center rounded-full bg-gray-100 shadow-sm text-sm md:text-base ${voting ? "opacity-50 cursor-not-allowed" : "hover:bg-gray-200"}`}
               whileHover={{ scale: voting ? 1 : 1.05 }}
               whileTap={{ scale: voting ? 1 : 0.95 }}
             >
-              <button
-                onClick={() => handleVote("upvote")}
-                disabled={voting}
-                className="flex items-center px-2 py-1 md:px-3 md:py-2 text-gray-700 hover:text-green-600"
-              >
-                <svg
-                  className="h-4 w-4 md:h-5 md:w-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M5 15l7-7 7 7"
-                  />
+              <button onClick={() => handleVote("upvote")} disabled={voting} className="flex items-center px-2 py-1 md:px-3 md:py-2 text-gray-700 hover:text-green-600">
+                <svg className="h-4 w-4 md:h-5 md:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
                 </svg>
               </button>
               <span className="px-1 md:px-2 text-gray-800 font-medium">
                 {(discussion.upvotes || 0) - (discussion.downvotes || 0)}
               </span>
-              <button
-                onClick={() => handleVote("downvote")}
-                disabled={voting}
-                className="flex items-center px-2 py-1 md:px-3 md:py-2 text-gray-700 hover:text-red-600"
-              >
-                <svg
-                  className="h-4 w-4 md:h-5 md:w-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M19 9l-7 7-7-7"
-                  />
+              <button onClick={() => handleVote("downvote")} disabled={voting} className="flex items-center px-2 py-1 md:px-3 md:py-2 text-gray-700 hover:text-red-600">
+                <svg className="h-4 w-4 md:h-5 md:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
             </motion.div>
 
-            {/* Bookmark Button */}
+            {/* Bookmark */}
             <motion.div
-              className={`flex items-center rounded-full bg-gray-100 shadow-sm text-sm md:text-base ${
-                isBookmarking ? "opacity-50 cursor-not-allowed" : "hover:bg-gray-200"
-              } ${
-                discussion.isBookmarked ? "bg-yellow-100 text-yellow-700" : "text-gray-700"
-              }`}
+              className={`flex items-center rounded-full bg-gray-100 shadow-sm text-sm md:text-base ${isBookmarking ? "opacity-50 cursor-not-allowed" : "hover:bg-gray-200"} ${discussion.isBookmarked ? "bg-yellow-100 text-yellow-700" : "text-gray-700"}`}
               whileHover={{ scale: isBookmarking ? 1 : 1.05 }}
               whileTap={{ scale: isBookmarking ? 1 : 0.95 }}
             >
-              <button
-                onClick={handleBookmark}
-                disabled={isBookmarking}
-                className="flex items-center px-2 py-1 md:px-3 md:py-2"
-              >
-                <svg
-                  className="h-4 w-4 md:h-5 md:w-5 mr-1 md:mr-2"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-5-7 5V5z"
-                  />
+              <button onClick={handleBookmark} disabled={isBookmarking} className="flex items-center px-2 py-1 md:px-3 md:py-2">
+                <svg className="h-4 w-4 md:h-5 md:w-5 mr-1 md:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-5-7 5V5z" />
                 </svg>
                 <span>{discussion.bookmarkCount || 0}</span>
               </button>
@@ -432,41 +309,64 @@ const DiscussionPage = () => {
             whileTap={{ scale: 0.95 }}
             onClick={handleComment}
             disabled={commenting}
-            className={`w-full flex items-center justify-center px-3 py-1 md:px-4 md:py-2 rounded-lg shadow-md transition-colors duration-200 text-sm md:text-base ${
-              commenting ? "bg-blue-300 cursor-not-allowed" : "bg-blue-500 hover:bg-blue-600"
-            } text-white`}
+            className={`w-full flex items-center justify-center px-3 py-1 md:px-4 md:py-2 rounded-lg shadow-md transition-colors duration-200 text-sm md:text-base ${commenting ? "bg-blue-300 cursor-not-allowed" : "bg-blue-500 hover:bg-blue-600"} text-white`}
           >
-            <svg
-              className="h-4 w-4 md:h-5 md:w-5 mr-1 md:mr-2"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
-              />
+            <svg className="h-4 w-4 md:h-5 md:w-5 mr-1 md:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
             </svg>
             {commenting ? "Posting..." : "Post Comment"}
           </motion.button>
         </motion.div>
       </div>
 
+      {/* Comments Section */}
       <div className="max-w-4xl mx-auto mt-4 md:mt-6">
         <div className="flex flex-col sm:flex-row justify-between items-center mb-4 space-y-2 sm:space-y-0">
-          <h3 className="text-xl md:text-2xl font-bold text-gray-800">Comments</h3>
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-            className="px-2 py-1 md:px-3 md:py-1 border rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm md:text-base"
-          >
-            <option value="latest">Latest</option>
-            <option value="mostLiked">Popular</option>
-            <option value="earliest">Earliest</option>
-          </select>
+          <h3 className="text-xl md:text-2xl font-bold text-gray-800">
+            Comments
+            <span className="ml-2 text-sm font-normal text-gray-500">({originalComments.length})</span>
+          </h3>
+
+          {/* ✅ Sort dropdown + Refresh button */}
+          <div className="flex items-center gap-2">
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="px-2 py-1 md:px-3 md:py-1 border rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm md:text-base"
+            >
+              <option value="latest">Latest</option>
+              <option value="mostLiked">Popular</option>
+              <option value="earliest">Earliest</option>
+            </select>
+
+            <motion.button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              whileHover={{ scale: refreshing ? 1 : 1.05 }}
+              whileTap={{ scale: refreshing ? 1 : 0.95 }}
+              title="Refresh comments"
+              className={`flex items-center gap-1.5 px-3 py-1 md:px-4 md:py-2 rounded-lg text-sm font-medium transition-colors duration-200 shadow-sm ${
+                refreshing
+                  ? "bg-blue-100 text-blue-400 cursor-not-allowed"
+                  : "bg-blue-500 hover:bg-blue-600 text-white"
+              }`}
+            >
+              <svg
+                className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+              {refreshing ? "Refreshing..." : "Refresh"}
+            </motion.button>
+          </div>
         </div>
 
         <div className="max-h-[50vh] md:max-h-[calc(100vh-24rem)] overflow-y-auto border rounded-lg p-3 md:p-4 bg-white shadow-md">
@@ -483,42 +383,27 @@ const DiscussionPage = () => {
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mt-1">
                   <p className="text-xs md:text-sm text-gray-500">
                     By:{" "}
-                    <Link
-                      to={`/profile/${c.user?.username || "unknown"}`}
-                      className="hover:underline"
-                    >
+                    <Link to={`/profile/${c.user?.username || "unknown"}`} className="hover:underline">
                       {c.user?.username || "Unknown"}
                     </Link>{" "}
                     | {new Date(c.createdAt).toLocaleString()}
                   </p>
-                  {/* Comment Like Button */}
                   <motion.div
                     className={`flex items-center rounded-full bg-gray-100 shadow-sm text-sm md:text-base ${
-                      userId && c.likedBy?.includes(userId)
+                      userIdRef.current && c.likedBy?.includes(userIdRef.current)
                         ? "bg-pink-100 text-pink-700"
                         : "text-gray-700 hover:bg-gray-200"
                     }`}
-                    whileHover={{ scale: userId ? 1.05 : 1 }}
-                    whileTap={{ scale: userId ? 0.95 : 1 }}
+                    whileHover={{ scale: userIdRef.current ? 1.05 : 1 }}
+                    whileTap={{ scale: userIdRef.current ? 0.95 : 1 }}
                   >
                     <button
                       onClick={() => handleCommentLike(c._id)}
-                      disabled={!userId}
+                      disabled={!userIdRef.current}
                       className="flex items-center px-2 py-1 md:px-3 md:py-2"
                     >
-                      <svg
-                        className="h-3 w-3 md:h-4 md:w-4 mr-1"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                        xmlns="http://www.w3.org/2000/svg"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-                        />
+                      <svg className="h-3 w-3 md:h-4 md:w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                       </svg>
                       <span>{c.likes || 0}</span>
                     </button>
