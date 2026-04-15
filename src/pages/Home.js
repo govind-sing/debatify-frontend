@@ -95,7 +95,7 @@ const SECTIONS = [
     bg: "rgba(99,102,241,0.05)",
     border: "rgba(99,102,241,0.18)",
     hoverBorder: "#6366F1",
-    stat: "1,200+ debates",
+    stat: "Debates",
   },
   {
     to: "/discussion",
@@ -107,7 +107,7 @@ const SECTIONS = [
     bg: "rgba(16,185,129,0.05)",
     border: "rgba(16,185,129,0.18)",
     hoverBorder: "#10B981",
-    stat: "3,400+ threads",
+    stat: "Threads",
   },
   {
     to: "/blog",
@@ -119,7 +119,7 @@ const SECTIONS = [
     bg: "rgba(236,72,153,0.05)",
     border: "rgba(236,72,153,0.18)",
     hoverBorder: "#EC4899",
-    stat: "800+ articles",
+    stat: "Articles",
   },
 ];
 
